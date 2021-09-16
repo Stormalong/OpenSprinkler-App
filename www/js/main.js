@@ -3534,19 +3534,19 @@ function showOptions( expandItem ) {
 		"</div>" ),
 		generateSensorOptions = function( index, sensorType, number ) {
 			return "<div class='ui-field-contain'>" +
-				"<fieldset data-role='controlgroup' class='ui-mini center sensor-options' data-type='horizontal'>" +
-					"<legend class='left'>" + _( "Sensor" ) + ( number ? " " + number + " " : " " ) + _( "Type" ) + "</legend>" +
-					"<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-none' value='0'" + ( sensorType === 0 ? " checked='checked'" : "" ) + ">" +
-					"<label for='o" + index + "-none'>" + _( "None" ) + "</label>" +
-					"<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-rain' value='1'" + ( sensorType === 1 ? " checked='checked'" : "" ) + ">" +
-					"<label for='o" + index + "-rain'>" + _( "Rain" ) + "</label>" +
+			    "<fieldset data-role='controlgroup' class='ui-mini center sensor-options' data-type='horizontal'>" +
+			        "<legend class='left'>" + _( "Sensor" ) + ( number ? " " + number + " " : " " ) + _( "Type" ) + "</legend>" +
+			        "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-none' value='0'" + ( sensorType === 0 ? " checked='checked'" : "" ) + ">" +
+			        "<label for='o" + index + "-none'>" + _( "None" ) + "</label>" +
+			        "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-rain' value='1'" + ( sensorType === 1 ? " checked='checked'" : "" ) + ">" +
+			        "<label for='o" + index + "-rain'>" + _( "Rain" ) + "</label>" +
 					( index === 52 ? "" : "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-flow' value='2'" + ( sensorType === 2 ? " checked='checked'" : "" ) + ">" +
-						"<label for='o" + index + "-flow'>" + _( "Flow" ) + "</label>" ) +
-					( checkOSVersion( 219 ) ? "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-soil' value='3'" + ( sensorType === 3 ? " checked='checked'" : "" ) + ">" +
-						"<label for='o" + index + "-soil'>" + _( "Soil" ) + "</label>" : "" ) +
-					( checkOSVersion( 217 ) ? "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-program' value='240'" + ( sensorType === 240 ? " checked='checked'" : "" ) + ">" +
-						"<label for='o" + index + "-program'>" + _( "Program Switch" ) + "</label>" : "" ) +
-				"</fieldset>" +
+			        	"<label for='o" + index + "-flow'>" + _( "Flow" ) + "</label>" ) +
+			        ( checkOSVersion( 219 ) ? "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-soil' value='3'" + ( sensorType === 3 ? " checked='checked'" : "" ) + ">" +
+			        	"<label for='o" + index + "-soil'>" + _( "Soil" ) + "</label>" : "" ) +
+			        ( checkOSVersion( 217 ) ? "<input class='noselect' type='radio' name='o" + index + "' id='o" + index + "-program' value='240'" + ( sensorType === 240 ? " checked='checked'" : "" ) + ">" +
+			        	"<label for='o" + index + "-program'>" + _( "Program Switch" ) + "</label>" : "" ) +
+			    "</fieldset>" +
 			"</div>";
 		},
 		submitOptions = function() {
@@ -4101,7 +4101,7 @@ function showOptions( expandItem ) {
 					"<button data-helptext='" +
 						_( "Select which events to send to IFTTT for use in recipes." ) +
 						"' class='help-icon btn-no-border ui-btn ui-icon-info ui-btn-icon-notext'></button>" +
-				"</label><button data-mini='true' id='o49' value='" + controller.options.ife + "'>Configure Events</button></div>";
+				"</label><button data-mini='true' id='o49' value='" + controller.options.ife + "'>" + _( "Configure Events" ) + "</button></div>";
 		}
 
 		if ( typeof controller.settings.mqtt !== "undefined" ) {
@@ -4730,7 +4730,7 @@ function showOptions( expandItem ) {
 					"<h1>" + _( "MQTT Settings" ) + "</h1>" +
 				"</div>" +
 				"<div class='ui-content'>" +
-					"<label for='enable'>Enable</label>" +
+					"<label for='enable'>" + _( "Enable" ) + "</label>" +
 					"<input class='needsclick mqtt_enable' data-mini='true' data-iconpos='right' id='enable' type='checkbox' " +
 						( options.en ? "checked='checked'" : "" ) + ">" +
 					"<div class='ui-body'>" +
@@ -4977,7 +4977,6 @@ var showHome = ( function() {
 				( hasAR ? ( "data-ar='" + ( ( controller.stations.act_relay[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) + "' " ) : "" ) +
 				( hasSD ? ( "data-sd='" + ( ( controller.stations.stn_dis[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) + "' " ) : "" ) +
 				( hasSequential ? ( "data-us='" + ( ( controller.stations.stn_seq[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) + "' " ) : "" ) +
-				( hasGroup ? ( "data-grp='" + controller.stations.stn_grp[ i ] + "' " ) : "" ) +
 				( hasSpecial ? ( "data-hs='" + ( ( controller.stations.stn_spe[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) + "' " ) : "" ) +
 				"></span>";
 
@@ -5209,7 +5208,6 @@ var showHome = ( function() {
 					button.data( "ar", select.find( "#ar" ).is( ":checked" ) ? 1 : 0 );
 					button.data( "sd", select.find( "#sd" ).is( ":checked" ) ? 1 : 0 );
 					button.data( "us", select.find( "#us" ).is( ":checked" ) ? 1 : 0 );
-					button.data( "grp", select.find( "#grp" ).val() );
 					name.html( select.find( "#stn-name" ).val() );
 
 					// Update the notes section
@@ -5229,8 +5227,8 @@ var showHome = ( function() {
 			// Setup two tabs for station configuration (Basic / Advanced) when applicable
 			if ( hasSpecial ) {
 				select += "<ul class='tabs'>" +
-								"<li class='current' data-tab='tab-basic'>Basic</li>" +
-								"<li data-tab='tab-advanced'>Advanced</li>" +
+								"<li class='current' data-tab='tab-basic'>" + _( "Basic" ) + "</li>" +
+								"<li data-tab='tab-advanced'>" + _( "Advanced" ) + "</li>" +
 							"</ul>";
 			}
 
@@ -5294,11 +5292,6 @@ var showHome = ( function() {
 					select += "<label for='us'><input class='needsclick' data-iconpos='right' id='us' type='checkbox' " +
 							( ( button.data( "us" ) === 1 ) ? "checked='checked'" : "" ) + ">" + _( "Sequential" ) +
 						"</label>";
-				}
-
-				if ( hasGroup ) {
-					select += "<div class='ui-bar-a ui-bar'>" + _( "Grouping" ) + ":</div><input class='center' data-corners='false' data-wrapper-class='tight stn-name ui-btn' id='grp' type='text' value='" + button.data( "grp" ) +
-						"'>";
 				}
 			}
 
@@ -5398,7 +5391,6 @@ var showHome = ( function() {
 				master = {},
 				master2 = {},
 				sequential = {},
-				group = {},
 				special = {},
 				rain = {},
 				sensor1 = {},
@@ -5453,10 +5445,6 @@ var showHome = ( function() {
 						sequential[ "q" + bid ] = ( sequential[ "q" + bid ] ) + ( attrib.data( "us" ) << s );
 					}
 
-					if ( hasGroup ) {
-						group[ "g" + ( bid * 8 + s ) ] = attrib.data( "grp" );
-					}
-
 					if ( hasSpecial ) {
 						special[ "p" + bid ] = ( special[ "p" + bid ] ) + ( ( attrib.data( "hs" ) ? 1 : 0 ) << s );
 					}
@@ -5505,7 +5493,6 @@ var showHome = ( function() {
 				( hasMaster ? "&" + $.param( master ) : "" ) +
 				( hasMaster2 ? "&" + $.param( master2 ) : "" ) +
 				( hasSequential ? "&" + $.param( sequential ) : "" ) +
-				( hasGroup ? "&" + $.param( group ) : "" ) +
 				( hasSpecial ? "&" + $.param( special ) : "" ) +
 				( hasIR ? "&" + $.param( rain ) : "" ) +
 				( hasSN1 ? "&" + $.param( sensor1 ) : "" ) +
@@ -5604,7 +5591,6 @@ var showHome = ( function() {
 			hasAR = ( typeof controller.stations.act_relay === "object" ) ? true : false;
 			hasSD = ( typeof controller.stations.stn_dis === "object" ) ? true : false;
 			hasSequential = ( typeof controller.stations.stn_seq === "object" ) ? true : false;
-			hasGroup = ( typeof controller.stations.stn_grp === "object" ) ? true : false;
 			hasSpecial = ( typeof controller.stations.stn_spe === "object" ) ? true : false;
 
 			for ( var i = 0; i < controller.stations.snames.length; i++ ) {
@@ -5653,7 +5639,6 @@ var showHome = ( function() {
 						ar: hasAR ? ( ( controller.stations.act_relay[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) : undefined,
 						sd: hasSD ? ( ( controller.stations.stn_dis[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) : undefined,
 						us: hasSequential ? ( ( controller.stations.stn_seq[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) : undefined,
-						grp: hasGroup ? controller.stations.stn_grp[ i ] : undefined,
 						hs: hasSpecial ? ( ( controller.stations.stn_spe[ parseInt( i / 8 ) ] & ( 1 << ( i % 8 ) ) ) ? 1 : 0 ) : undefined
 					} );
 
@@ -5704,7 +5689,7 @@ var showHome = ( function() {
 				callback();
 			} );
 		},
-		hasMaster, hasMaster2, hasIR, hasSN1, hasSN2, hasAR, hasSD, hasSequential, hasGroup, hasSpecial, cards, siteSelect, i;
+		hasMaster, hasMaster2, hasIR, hasSN1, hasSN2, hasAR, hasSD, hasSequential, hasSpecial, cards, siteSelect, currentSite, i, sites;
 
 	page.one( "pageshow", function() {
 		$( "html" ).on( "datarefresh", updateContent );
@@ -5723,7 +5708,6 @@ var showHome = ( function() {
 		hasAR = ( typeof controller.stations.act_relay === "object" ) ? true : false;
 		hasSD = ( typeof controller.stations.stn_dis === "object" ) ? true : false;
 		hasSequential = ( typeof controller.stations.stn_seq === "object" ) ? true : false;
-		hasGroup = ( typeof controller.stations.stn_grp === "object" ) ? true : false;
 		hasSpecial = ( typeof controller.stations.stn_spe === "object" ) ? true : false;
 
 		cards = "";
@@ -5934,7 +5918,7 @@ function stationClicked(station) {
 				incrementalUpdate: false,
 				maximum: 65535,
 				seconds: sites[ currentSite ].lastRunTime[ station ] > 0 ? sites[ currentSite ].lastRunTime[ station ] : 0,
-				helptext: _( "Enter a duration to manually run " + name ),
+				helptext: _("Enter a duration to manually run ") + name,
 				callback: function( duration ) {
 					sendToOS( "/cm?sid=" + station + "&en=1&t=" + duration + "&pw=", "json" ).done( function() {
 
@@ -6804,7 +6788,7 @@ var getPreview = ( function() {
 			// Station qid for FW 2.1.6+
 			qidArray = new Array( nstations ),
 			lastStopTime = 0,
-			lastSeqStopTime = new Array( 16 ),
+			lastSeqStopTime = 0,
 			busy, matchFound, prog, sid, qid, q, sqi, bid, bid2, s, s2;
 
 		for ( sid = 0; sid < nstations; sid++ ) {
@@ -6859,7 +6843,6 @@ var getPreview = ( function() {
 												dur: waterTime,
 												sid: sid,
 												pid: pid + 1,
-												gid: controller.stations.stn_grp ? controller.stations.stn_grp[ sid ] : 0,
 												pl: 1
 											} );
 										}
@@ -6882,11 +6865,11 @@ var getPreview = ( function() {
 			}
 			if ( matchFound ) {
 				var acctime = simminutes * 60,
-					seqAcctime = new Array( lastSeqStopTime.length );
+					seqAcctime = acctime;
 
 				if ( is211 ) {
-					for ( var i = 0; i < seqAcctime.length; i++ ) {
-						seqAcctime[ i ] = Math.max( acctime, lastSeqStopTime[ i ] + controller.options.sdt );
+					if ( lastSeqStopTime > acctime ) {
+						seqAcctime = lastSeqStopTime + controller.options.sdt;
 					}
 
 					if ( is216 ) {
@@ -6903,9 +6886,9 @@ var getPreview = ( function() {
 							bid2 = sid >> 3;
 							s2 = sid & 0x07;
 							if ( controller.stations.stn_seq[ bid2 ] & ( 1 << s2 ) ) {
-								q.st = seqAcctime[ q.gid ];
-								seqAcctime[ q.gid ] += q.dur;
-								seqAcctime[ q.gid ] += controller.options.sdt;
+								q.st = seqAcctime;
+								seqAcctime += q.dur;
+								seqAcctime += controller.options.sdt;
 							} else {
 								q.st = acctime;
 								acctime++;
@@ -6920,8 +6903,8 @@ var getPreview = ( function() {
 								continue;
 							}
 							if ( controller.stations.stn_seq[ bid2 ] & ( 1 << s2 ) ) {
-								startArray[ sid ] = seqAcctime[ 0 ];seqAcctime[ 0 ] += endArray[ sid ];
-								endArray[ sid ] = seqAcctime[ 0 ];seqAcctime[ 0 ] += controller.options.sdt;
+								startArray[ sid ] = seqAcctime;seqAcctime += endArray[ sid ];
+								endArray[ sid ] = seqAcctime;seqAcctime += controller.options.sdt;
 								plArray[ sid ] = 1;
 							} else {
 								startArray[ sid ] = acctime;
@@ -7005,7 +6988,7 @@ var getPreview = ( function() {
 				}
 
 				// Lastly, calculate lastSeqStopTime
-				for ( var d = 0; d < lastSeqStopTime.length; d++ ) { lastSeqStopTime[ d ] = 0; }
+				lastSeqStopTime = 0;
 				for ( qid = 0; qid < rtQueue.length; qid++ ) {
 					q = rtQueue[ qid ];
 					sid = q.sid;
@@ -7013,8 +6996,8 @@ var getPreview = ( function() {
 					s2 = sid & 0x07;
 					var sst = q.st + q.dur;
 					if ( controller.stations.stn_seq[ bid2 ] & ( 1 << s2 ) ) {
-						if ( sst > lastSeqStopTime[ q.gid ] ) {
-							lastSeqStopTime[ q.gid ] = sst;
+						if ( sst > lastSeqStopTime ) {
+							lastSeqStopTime = sst;
 						}
 					}
 				}
@@ -7023,7 +7006,7 @@ var getPreview = ( function() {
 				// Handle firmwares prior to 2.1.6
 				if ( busy ) {
 					if ( is211 ) {
-						lastSeqStopTime[ 0 ] = runSched( simminutes * 60, startArray, programArray, endArray, plArray, simt );
+						lastSeqStopTime = runSched( simminutes * 60, startArray, programArray, endArray, plArray, simt );
 						simminutes++;
 						for ( sid = 0; sid < controller.settings.nbrd * 8; sid++ ) {
 							if ( programArray[ sid ] > 0 && simminutes * 60 >= endArray[ sid ] ) {
@@ -9163,6 +9146,7 @@ function submitProgram21( id, ignoreWarning ) {
 		en = ( $( "#en-" + id ).is( ":checked" ) ) ? 1 : 0,
 		weather = ( $( "#uwt-" + id ).is( ":checked" ) ) ? 1 : 0,
 		j = 0,
+		minIntervalDays = checkOSVersion( 2199 ) ? 1 : 2,
 		daysin, i, name, url;
 
 	// Set enable/disable bit for program
@@ -9183,8 +9167,8 @@ function submitProgram21( id, ignoreWarning ) {
 		j |= ( 3 << 4 );
 		days[ 1 ] = parseInt( $( "#every-" + id ).val(), 10 );
 
-		if ( !( days[ 1 ] >= 2 && days[ 1 ] <= 128 ) ) {
-			showerror( _( "Error: Interval days must be between 2 and 128." ) );
+		if ( !( days[ 1 ] >= minIntervalDays && days[ 1 ] <= 128 ) ) {
+			showerror( _( "Error: Interval days must be between " + minIntervalDays + " and 128." ) );
 			return;
 		}
 
@@ -11104,7 +11088,11 @@ function checkOSVersion( check ) {
 
 	// If check is 4 digits then we need to include the minor version number as well
 	if ( check >= 1000 ) {
-		version = version * 10 + controller.options.fwm;
+		if ( isNaN( controller.options.fwm ) ) {
+			return false;
+		} else {
+			version = version * 10 + controller.options.fwm;
+		}
 	}
 
 	if ( isOSPi() ) {
