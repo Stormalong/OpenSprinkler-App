@@ -109,6 +109,8 @@ var isIEMobile = /IEMobile/.test( navigator.userAgent ),
 
 	// Initialize controller array which will store JSON data
 	controller = {},
+	sites = {},
+	currentSite = -1,
 	switching = false,
 	currentCoordinates = [ 0, 0 ],
 
@@ -299,6 +301,8 @@ $( document )
 		getManual();
 	} else if ( hash === "#about" ) {
 		showAbout();
+	} else if ( hash === "#map" ) {
+		showMap();
 	} else if ( hash === "#runonce" ) {
 		getRunonce();
 	} else if ( hash === "#os-options" ) {
@@ -3409,6 +3413,11 @@ function bindPanel() {
 		return false;
 	} );
 
+	panel.find( "a[href='#map']" ).on( "click", function() {
+		changePage( "#map" );
+		return false;
+	} );
+
 	panel.find( ".cloud-login" ).on( "click", function() {
 		requestCloudAuth();
 		return false;
@@ -5695,7 +5704,7 @@ var showHome = ( function() {
 				callback();
 			} );
 		},
-		hasMaster, hasMaster2, hasIR, hasSN1, hasSN2, hasAR, hasSD, hasSequential, hasGroup, hasSpecial, cards, siteSelect, currentSite, i, sites;
+		hasMaster, hasMaster2, hasIR, hasSN1, hasSN2, hasAR, hasSD, hasSequential, hasGroup, hasSpecial, cards, siteSelect, i;
 
 	page.one( "pageshow", function() {
 		$( "html" ).on( "datarefresh", updateContent );
@@ -5743,68 +5752,7 @@ var showHome = ( function() {
 		} );
 
 		page.on( "click", ".card", function() {
-
-			// Bind delegate handler to stop specific station (supported on firmware 2.1.0+ on Arduino)
-			if ( !checkOSVersion( 210 ) ) {
-				return false;
-			}
-
-			var el = $( this ),
-				station = el.data( "station" ),
-				currentStatus = controller.status[ station ],
-				name = controller.stations.snames[ station ],
-				question;
-
-			if ( isStationMaster( station ) ) {
-				return false;
-			}
-
-			if ( currentStatus ) {
-				question = _( "Do you want to stop the selected station?" );
-			} else {
-				if ( el.find( "span.nobr" ).length ) {
-					question = _( "Do you want to unschedule the selected station?" );
-				} else {
-					showDurationBox( {
-						title: name,
-						incrementalUpdate: false,
-						maximum: 65535,
-						seconds: sites[ currentSite ].lastRunTime[ station ] > 0 ? sites[ currentSite ].lastRunTime[ station ] : 0,
-						helptext: _( "Enter a duration to manually run " + name ),
-						callback: function( duration ) {
-							sendToOS( "/cm?sid=" + station + "&en=1&t=" + duration + "&pw=", "json" ).done( function() {
-
-								// Update local state until next device refresh occurs
-								controller.settings.ps[ station ][ 0 ] = 99;
-								controller.settings.ps[ station ][ 1 ] = duration;
-
-								refreshStatus();
-								showerror( _( "Station has been queued" ) );
-
-								// Save run time for this station
-								sites[ currentSite ].lastRunTime[ station ] = duration;
-								storage.set( { "sites": JSON.stringify( sites ) }, cloudSaveSites );
-							} );
-						}
-					} );
-					return;
-				}
-			}
-			areYouSure( question, controller.stations.snames[ station ], function() {
-				sendToOS( "/cm?sid=" + station + "&en=0&pw=" ).done( function() {
-
-					// Update local state until next device refresh occurs
-					controller.settings.ps[ station ][ 0 ] = 0;
-					controller.settings.ps[ station ][ 1 ] = 0;
-					controller.status[ i ] = 0;
-
-					// Remove any timer associated with the station
-					delete timers[ "station-" + station ];
-
-					refreshStatus();
-					showerror( _( "Station has been stopped" ) );
-				} );
-			} );
+			return stationClicked($( this ).data("station"));
 		} )
 
 		.on( "click", "img", function() {
@@ -5959,6 +5907,71 @@ function showGuidedSetup() {
 
 	// Stub for guided setup page
 
+}
+
+function stationClicked(station) {
+	// Bind delegate handler to stop specific station (supported on firmware 2.1.0+ on Arduino)
+	if ( !checkOSVersion( 210 ) ) {
+		return false;
+	}
+
+	var currentStatus = controller.status[ station ],
+		name = controller.stations.snames[ station ],
+		question;
+
+	if ( isStationMaster( station ) ) {
+		return false;
+	}
+
+	if ( currentStatus ) {
+		question = _( "Do you want to stop the selected station?" );
+	} else {
+		if ( controller.settings.ps[ station ][ 0 ] > 0 ) {
+			question = _( "Do you want to unschedule the selected station?" );
+		} else {
+			showDurationBox( {
+				title: name,
+				incrementalUpdate: false,
+				maximum: 65535,
+				seconds: sites[ currentSite ].lastRunTime[ station ] > 0 ? sites[ currentSite ].lastRunTime[ station ] : 0,
+				helptext: _( "Enter a duration to manually run " + name ),
+				callback: function( duration ) {
+					sendToOS( "/cm?sid=" + station + "&en=1&t=" + duration + "&pw=", "json" ).done( function() {
+
+						// Update local state until next device refresh occurs
+						controller.settings.ps[ station ][ 0 ] = 99;
+						controller.settings.ps[ station ][ 1 ] = duration;
+
+						refreshStatus();
+						showerror( _( "Station has been queued" ) );
+
+						// Save run time for this station
+						sites[ currentSite ].lastRunTime[ station ] = duration;
+						storage.set( { "sites": JSON.stringify( sites ) }, cloudSaveSites );
+					} );
+				}
+			} );
+			return true;
+		}
+	}
+
+	areYouSure( question, controller.stations.snames[ station ], function() {
+		sendToOS( "/cm?sid=" + station + "&en=0&pw=" ).done( function() {
+
+			// Update local state until next device refresh occurs
+			controller.settings.ps[ station ][ 0 ] = 0;
+			controller.settings.ps[ station ][ 1 ] = 0;
+			controller.status[ station ] = 0;
+
+			// Remove any timer associated with the station
+			delete timers[ "station-" + station ];
+
+			refreshStatus();
+			showerror( _( "Station has been stopped" ) );
+		} );
+	} );
+
+	return true;
 }
 
 function isStationMaster( sid ) {
@@ -9759,6 +9772,290 @@ var showAbout = ( function() {
 
 	return begin;
 } )();
+
+// show Map page
+var showMap = ( function() {
+	var page = $(`
+		<div data-role='page' id='map'>
+			<div class='ui-content' role='main'>
+				<canvas id='mapCanvas'></canvas>
+			</div>
+		</div>`
+	);
+
+	function begin() {
+		page.one( "pagehide", function() {
+			page.detach();
+		} );
+
+		var editting = false;
+		var station = 0;
+		var canvas;
+
+		function setMapEditting(on) {
+			editting = on;
+			canvas.getObjects().forEach((g) => {
+				if (editting) {
+					// enable dragging
+					g.lockMovementX = false;
+					g.lockMovementY = false;
+					g.hoverCursor = "move";
+				} else {
+					// disable dragging
+					g.lockMovementX = true;
+					g.lockMovementY = true;
+					g.hoverCursor = "pointer";
+				}
+			});
+			setHeader();
+
+			if (editting) {
+				var panel = $("#notificationPanel");
+				var stations = "";
+				for (var i = 0; i < controller.stations.snames.length; i++) {
+					stations += "<option " + (i === station ? "selected" : "") + " value='" + i + "'>" + controller.stations.snames[i] + "</option>";
+				}
+
+				menu = $("<div id='map-edit-menu'><select id='mapEditStationSelect'>" + stations + "</select></div>");
+				panel.append(menu);
+
+				$("#mapEditStationSelect").change(() => {
+					station = parseInt($("#mapEditStationSelect").val());
+				});
+			} else {
+				$("#map-edit-menu").remove();
+			}
+		}
+
+		function setHeader() {
+			changeHeader( {
+				title: _( "Map" ),
+				leftBtn: {
+					icon: "carat-l",
+					text: _( "Back" ),
+					class: "ui-toolbar-back-btn",
+					on: goBack
+				},
+				rightBtn: editting ? {
+					icon: "save",
+					text: _( "Save" ),
+					on: function() {
+						localStorage.setItem("map", JSON.stringify(canvas));
+						setMapEditting(false);
+					}
+				} : {
+					icon: "edit",
+					text: _( "Edit" ),
+					on: function() {
+						setMapEditting(true);
+					}
+				}
+			} );
+		}
+
+		$( "#map" ).remove();
+
+		$.mobile.pageContainer.append( page );
+
+		loadMap("mapCanvas", (c, group) => {
+			canvas = c;
+
+			setMapEditting(false);
+
+			var dropping = false;
+			var panning = false;
+			var selectedGroup = null;
+			var lastPosX;
+			var lastPosY;
+
+			canvas.on('mouse:down', function(options) {
+				options.e.preventDefault();
+				options.e.stopPropagation();
+				// start panning if they are holding down the alt key or if they right click
+				if (options.e.altKey === true || options.e.button === 2) {
+					panning = true;
+					lastPosX = options.e.clientX;
+					lastPosY = options.e.clientY;
+				} else if (editting) {
+					dropping = true;
+				}
+			});
+
+			canvas.on('mouse:move', function (options) {
+				dropping = false;
+				selectedGroup = null;
+				if (panning) {
+					this.viewportTransform[4] += options.e.clientX - lastPosX;
+					this.viewportTransform[5] += options.e.clientY - lastPosY;
+					this.requestRenderAll();
+					lastPosX = options.e.clientX;
+					lastPosY = options.e.clientY;
+				}
+			});
+
+			canvas.on('mouse:up', function(options) {
+				options.e.preventDefault();
+				options.e.stopPropagation();
+
+				if (panning) {
+					// on mouse up we want to recalculate new interaction
+					// for all objects, so we call setViewportTransform
+					this.setViewportTransform(this.viewportTransform);
+					panning = false;
+				}
+
+				if (editting) {
+					if (dropping) {
+						dropping = false;
+
+						showMapEditBox((type) => {
+							var pointer = canvas.getPointer(options.e);
+							var group = canvas.getObjects()[station];
+							if (type == "valve") {
+								color = 'red';
+							} else if (type == "sprinkler") {
+								color = 'green';
+							}
+
+							var circle = new fabric.Circle({
+								radius: 5, fill: color, left: pointer.x, top: pointer.y, originX: 'center', originY: 'center'
+							});
+							group.addWithUpdate(circle);
+							canvas.renderAll();
+						});
+					} else {
+						areYouSure("Do you want to remove the selected item?", "", () => {
+							canvas.remove(canvas.getActiveObject());
+						});
+					}
+
+					canvas.discardActiveObject().renderAll();
+				} else if (selectedGroup) {
+					stationClicked(canvas.getActiveObject().station);
+					selectedGroup = null;
+				}
+			});
+
+			canvas.on('mouse:wheel', function(options) {
+				var zoom = canvas.getZoom();
+				zoom *= 0.999 ** options.e.deltaY;
+				if (zoom > 20) {
+					zoom = 20;
+				} else if (zoom < 0.01) {
+					zoom = 0.01;
+				}
+				canvas.zoomToPoint({ x: options.e.offsetX, y: options.e.offsetY }, zoom);
+				options.e.preventDefault();
+				options.e.stopPropagation();
+			});
+
+			canvas.on({
+				'selection:updated': HandleSelection,
+				'selection:created': HandleSelection
+			});
+
+			function HandleSelection(e) {
+				selectedGroup = e.selected[0];
+				dropping = false;
+			}
+		});
+	}
+
+	return begin;
+} )();
+
+function showMapEditBox(callback) {
+	$( "#mapEditBox" ).popup( "destroy" ).remove();
+
+	var popup = $( "<div data-role='popup' id='mapEditBox' data-theme='a'>" +
+			"<div class='ui-content'>" +
+				"<span>" +
+				"<button id='placeValve' data-theme='b'>" + _( "Place Valve" ) + "</button>" +
+				"<button id='placeSprinkler' data-theme='b'>" + _( "Place Sprinkler" ) + "</button>" +
+				"</span>" +
+			"</div>" +
+		"</div>" );
+
+	popup.find( "#placeValve" ).on( "click", function() {
+		callback("valve");
+		popup.popup( "destroy" ).remove();
+	} );
+
+	popup.find( "#placeSprinkler" ).on( "click", function() {
+		callback("sprinkler");
+		popup.popup( "destroy" ).remove();
+	} );
+
+	popup.css( "max-width", "350px" );
+
+	openPopup( popup );
+}
+
+function loadMap(canvasName, callback) {
+	var mapJSON = localStorage.getItem("map");
+
+	var canvas = new fabric.Canvas(canvasName, {
+		fireRightClick: true,
+		stopContextMenu: true,
+	});
+	var groups;
+
+	function setCanvasSize(oImg) {
+		var w = oImg.width;
+		// the container (ui-content) has max-width 1000px
+		if (w > 1000) {
+			w = 1000;
+		}
+
+		canvas.setHeight(oImg.height);
+		canvas.setWidth(w);
+	}
+
+	function returnMap(canvas) {
+		// ensure the loaded canvas has the correct number of groups
+		while (canvas.getObjects().length < controller.stations.maxlen) {
+			group = new fabric.Group();
+			canvas.add(group);
+		}
+		while (canvas.getObjects().length > controller.stations.maxlen) {
+			canvas.remove(canvas.getObjects()[canvas.getObjects().length - 1]);
+		}
+
+		canvas.getObjects().forEach((g, i) => {
+			g.station = i;
+			// don't allow scaling
+			g.lockScalingX  = true;
+			g.lockScalingY  = true;
+			// don't show the controls for scaling or rotating
+			g.setControlsVisibility({
+				mt: false,
+				mb: false,
+				ml: false,
+				mr: false,
+				bl: false,
+				br: false,
+				tl: false,
+				tr: false,
+				mtr: false,
+			});
+		});
+
+		callback(canvas);
+	}
+
+	if (mapJSON) {
+		canvas.loadFromJSON(mapJSON, () => {
+			setCanvasSize(canvas.backgroundImage);
+			returnMap(canvas);
+		});
+	} else {
+		fabric.Image.fromURL('img/property.png', function (oImg) {
+			setCanvasSize(oImg);
+			canvas.setBackgroundImage(oImg);
+			returnMap(canvas);
+		});
+	}
+}
 
 // OpenSprinkler controller methods
 function isRunning() {

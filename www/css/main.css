@@ -1170,3 +1170,12 @@ div.running-text{
 #footer-menu {
 	bottom: calc(env(safe-area-inset-bottom) + 10%) !important;
 }
+
+#map-edit-menu {
+    border: 0;
+    background: transparent;
+    position: fixed;
+    right: 10px;
+    top: 8%;
+    z-index: 9999;
+}
