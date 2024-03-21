@@ -9793,22 +9793,23 @@ var showMap = ( function() {
 			});
 			setHeader();
 
-			if (editting) {
-				var panel = $("#notificationPanel");
-				var stations = "";
-				for (var i = 0; i < controller.stations.snames.length; i++) {
-					stations += "<option " + (i === station ? "selected" : "") + " value='" + i + "'>" + controller.stations.snames[i] + "</option>";
+			$("#map-edit-menu").remove();
+			var panel = $("#notificationPanel");
+			var stations = "";
+			stations += "<option selected " + (i === station ? "selected" : "") + " value='0'>All</option>";
+
+			for (var i = 0; i < controller.stations.snames.length; i++) {
+				if (!isStationDisabled(i)) {
+					stations += "<option value='" + (i+1) + "'>" + controller.stations.snames[i] + "</option>";
 				}
-
-				menu = $("<div id='map-edit-menu'><select id='mapEditStationSelect'>" + stations + "</select></div>");
-				panel.append(menu);
-
-				$("#mapEditStationSelect").change(() => {
-					station = parseInt($("#mapEditStationSelect").val());
-				});
-			} else {
-				$("#map-edit-menu").remove();
 			}
+
+			menu = $("<div id='map-edit-menu'><select id='mapEditStationSelect'>" + stations + "</select></div>");
+			panel.append(menu);
+
+			$("#mapEditStationSelect").change(() => {
+				station = parseInt($("#mapEditStationSelect").val());
+			});
 		}
 
 		function setHeader() {
@@ -9982,7 +9983,6 @@ function loadMap(canvasName, callback) {
 		fireRightClick: true,
 		stopContextMenu: true,
 	});
-	var groups;
 
 	function setCanvasSize(oImg) {
 		var w = oImg.width;
