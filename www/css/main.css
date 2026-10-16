@@ -2253,6 +2253,13 @@ button[id^="start_1-"] {
 	stroke-width: 1.5px;
 }
 
+/* Where a branch comes off another run */
+.site-map-junction {
+	fill: var(--run-color);
+	stroke: #fff;
+	stroke-width: 1.5px;
+}
+
 .site-map-head-mark {
 	stroke: #fff;
 	stroke-width: 1.5px;

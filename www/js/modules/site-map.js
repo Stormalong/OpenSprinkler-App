@@ -111,6 +111,11 @@ OSApp.SiteMap.hasData = function( map ) {
 // Fewest points a run of each type needs to be kept
 OSApp.SiteMap.minRunPoints = { heads: 1, drip: 2 };
 
+// A branch starts on another run of the same station (run.branch), so a branch of heads also needs a head
+OSApp.SiteMap.getMinPoints = function( run ) {
+	return OSApp.SiteMap.minRunPoints[ run.type ] + ( run.branch && run.type === "heads" ? 1 : 0 );
+};
+
 // Keeps only well-formed runs for existing stations: { sid: [ run, ... ] } with no empty stations
 OSApp.SiteMap.cleanDrawings = function( drawings, stationCount ) {
 	var clean = {};
@@ -121,14 +126,18 @@ OSApp.SiteMap.cleanDrawings = function( drawings, stationCount ) {
 		}
 		runs = runs.filter( function( run ) {
 			return run && OSApp.SiteMap.minRunPoints[ run.type ] && Array.isArray( run.pts ) &&
-				run.pts.length >= OSApp.SiteMap.minRunPoints[ run.type ] &&
+				run.pts.length >= OSApp.SiteMap.getMinPoints( run ) &&
 				run.pts.every( function( pt ) {
 					return Array.isArray( pt ) && typeof pt[ 0 ] === "number" && typeof pt[ 1 ] === "number";
 				} );
 		} ).map( function( run ) {
-			return { type: run.type, pts: run.pts.map( function( pt ) {
+			var clean = { type: run.type, pts: run.pts.map( function( pt ) {
 				return [ Math.min( 1, Math.max( 0, pt[ 0 ] ) ), Math.min( 1, Math.max( 0, pt[ 1 ] ) ) ];
 			} ) };
+			if ( run.branch ) {
+				clean.branch = true;
+			}
+			return clean;
 		} );
 		if ( runs.length ) {
 			clean[ sid ] = runs;
@@ -137,7 +146,8 @@ OSApp.SiteMap.cleanDrawings = function( drawings, stationCount ) {
 	return clean;
 };
 
-// Drawings to text, one run per line: "h,sid,x,y,x,y,..." for heads, "d,sid,..." for drip, x/y from 0 to coordScale
+// Drawings to text, one run per line: "h,sid,x,y,x,y,..." for heads, "d,sid,..." for drip, x/y from 0 to coordScale.
+// A branch uses the capital letter (H or D); its first point is where it joins another run.
 OSApp.SiteMap.encodeDrawings = function( drawings ) {
 	var scale = OSApp.SiteMap.Constants.coordScale,
 		lines = [];
@@ -146,7 +156,8 @@ OSApp.SiteMap.encodeDrawings = function( drawings ) {
 		return a - b;
 	} ).forEach( function( sid ) {
 		drawings[ sid ].forEach( function( run ) {
-			lines.push( [ run.type === "heads" ? "h" : "d", sid ].concat( run.pts.reduce( function( values, pt ) {
+			var letter = run.type === "heads" ? "h" : "d";
+			lines.push( [ run.branch ? letter.toUpperCase() : letter, sid ].concat( run.pts.reduce( function( values, pt ) {
 				return values.concat( Math.round( pt[ 0 ] * scale ), Math.round( pt[ 1 ] * scale ) );
 			}, [] ) ).join( "," ) );
 		} );
@@ -160,7 +171,7 @@ OSApp.SiteMap.decodeDrawings = function( text, stationCount ) {
 
 	String( text || "" ).split( "\n" ).forEach( function( line ) {
 		var fields = line.split( "," ),
-			type = { h: "heads", d: "drip" }[ fields[ 0 ] ],
+			type = { h: "heads", d: "drip", H: "heads", D: "drip" }[ fields[ 0 ] ],
 			sid = Number( fields[ 1 ] ),
 			values = fields.slice( 2 ).map( Number ),
 			pts = [],
@@ -172,7 +183,8 @@ OSApp.SiteMap.decodeDrawings = function( text, stationCount ) {
 		for ( index = 0; index < values.length; index += 2 ) {
 			pts.push( [ values[ index ] / scale, values[ index + 1 ] / scale ] );
 		}
-		( drawings[ sid ] = drawings[ sid ] || [] ).push( { type: type, pts: pts } );
+		( drawings[ sid ] = drawings[ sid ] || [] ).push( fields[ 0 ] === fields[ 0 ].toUpperCase() ?
+			{ type: type, branch: true, pts: pts } : { type: type, pts: pts } );
 	} );
 	return OSApp.SiteMap.cleanDrawings( drawings, stationCount );
 };
@@ -620,6 +632,53 @@ OSApp.SiteMap.getCoverSize = function( ratio, viewWidth, viewHeight ) {
 	}
 	width = Math.max( viewWidth, viewHeight / ratio );
 	return { width: width, height: width * ratio };
+};
+
+// The point on a curve (segments from getCurve) closest to point, found by sampling each segment and then
+// narrowing in around the best sample
+OSApp.SiteMap.nearestOnCurve = function( segments, point ) {
+	var at = function( segment, t ) {
+			var u = 1 - t;
+			return {
+				x: u * u * u * segment.from.x + 3 * u * u * t * segment.c1.x + 3 * u * t * t * segment.c2.x + t * t * t * segment.to.x,
+				y: u * u * u * segment.from.y + 3 * u * u * t * segment.c1.y + 3 * u * t * t * segment.c2.y + t * t * t * segment.to.y
+			};
+		},
+		distance = function( pt ) {
+			return Math.hypot( pt.x - point.x, pt.y - point.y );
+		},
+		steps = 32,
+		best = null;
+
+	segments.forEach( function( segment ) {
+		var step, t, low, high, a, b;
+
+		for ( step = 0; step <= steps; step++ ) {
+			t = step / steps;
+			if ( !best || distance( at( segment, t ) ) < best.distance ) {
+				best = { segment: segment, t: t, distance: distance( at( segment, t ) ) };
+			}
+		}
+		if ( best.segment !== segment ) {
+			return;
+		}
+		low = Math.max( 0, best.t - 1 / steps );
+		high = Math.min( 1, best.t + 1 / steps );
+		for ( step = 0; step < 30; step++ ) {
+			a = low + ( high - low ) / 3;
+			b = high - ( high - low ) / 3;
+			if ( distance( at( segment, a ) ) < distance( at( segment, b ) ) ) {
+				high = b;
+			} else {
+				low = a;
+			}
+		}
+		t = ( low + high ) / 2;
+		if ( distance( at( segment, t ) ) < best.distance ) {
+			best = { segment: segment, t: t, distance: distance( at( segment, t ) ) };
+		}
+	} );
+	return best ? at( best.segment, best.t ) : null;
 };
 
 // A view is { scale, x, y }: the image is drawn at scale times its fitted size (width x height), with its top-left
@@ -1401,6 +1460,35 @@ OSApp.SiteMap.createView = function() {
 		return element;
 	}
 
+	// The points a run's line passes through on screen: from its valve (hasFeed) unless it starts there or is a branch
+	function getRunLine( sid, run ) {
+		var valve = map.pins[ sid ],
+			hasFeed = !!( !run.branch && valve && run.pts.length && ( run.pts[ 0 ][ 0 ] !== valve.x || run.pts[ 0 ][ 1 ] !== valve.y ) );
+
+		return {
+			hasFeed: hasFeed,
+			points: ( hasFeed ? [ [ valve.x, valve.y ] ] : [] ).concat( run.pts ).map( function( pt ) {
+				var screen = toScreen( { x: pt[ 0 ], y: pt[ 1 ] } );
+				return { x: screen.left, y: screen.top };
+			} )
+		};
+	}
+
+	// The map point on a run's line (including its pipe from the valve) closest to pos
+	function nearestOnRun( sid, run, pos ) {
+		var size = getSize(),
+			screen = toScreen( pos ),
+			line = getRunLine( sid, run ),
+			nearest = line.points.length > 1 ?
+				OSApp.SiteMap.nearestOnCurve( OSApp.SiteMap.getCurve( line.points ), { x: screen.left, y: screen.top } ) :
+				line.points[ 0 ];
+
+		return {
+			x: Math.min( 1, Math.max( 0, ( nearest.x - view.x ) / ( size.width * view.scale ) ) ),
+			y: Math.min( 1, Math.max( 0, ( nearest.y - view.y ) / ( size.height * view.scale ) ) )
+		};
+	}
+
 	// SVG path data for segments from OSApp.SiteMap.getCurve
 	function curvePath( segments ) {
 		var coords = function( pt ) {
@@ -1442,20 +1530,15 @@ OSApp.SiteMap.createView = function() {
 				return;
 			}
 			var state = OSApp.SiteMap.getPinState( sid ),
-				name = OSApp.Stations.getName( sid ),
-				valve = map.pins[ sid ];
+				name = OSApp.Stations.getName( sid );
 
 			runs.forEach( function( run, runIndex ) {
 				var current = drawing && drawing.run === run,
-					hasFeed = valve && run.pts.length && ( run.pts[ 0 ][ 0 ] !== valve.x || run.pts[ 0 ][ 1 ] !== valve.y ),
-					points = ( hasFeed ? [ [ valve.x, valve.y ] ] : [] ).concat( run.pts ).map( function( pt ) {
-						var screen = toScreen( { x: pt[ 0 ], y: pt[ 1 ] } );
-						return { x: screen.left, y: screen.top };
-					} ),
+					line = getRunLine( sid, run ),
 
 					// The pipe from the valve is the first piece of the same curve, so it bends smoothly into the run
-					curve = OSApp.SiteMap.getCurve( points ),
-					feed = hasFeed ? curve.shift() : null,
+					curve = OSApp.SiteMap.getCurve( line.points ),
+					feed = line.hasFeed ? curve.shift() : null,
 					group = svgElement( "g", {
 						"class": "site-map-run site-map-run-" + run.type + " site-map-run-" + state +
 							( anyRunning && state !== "running" ? " site-map-run-dim" : "" ) + ( current ? " site-map-run-current" : "" ),
@@ -1480,7 +1563,10 @@ OSApp.SiteMap.createView = function() {
 				run.pts.forEach( function( pt, pointIndex ) {
 					var screen = toScreen( { x: pt[ 0 ], y: pt[ 1 ] } );
 
-					if ( run.type === "heads" ) {
+					// A branch starts with a junction on the run it comes off, not a head
+					if ( run.branch && pointIndex === 0 ) {
+						group.appendChild( svgElement( "circle", { "class": "site-map-junction", cx: screen.left, cy: screen.top, r: 3 } ) );
+					} else if ( run.type === "heads" ) {
 						group.appendChild( svgElement( "circle", { "class": "site-map-head", cx: screen.left, cy: screen.top, r: 5 } ) );
 						group.appendChild( svgElement( "path", {
 							"class": "site-map-head-mark",
@@ -1651,14 +1737,27 @@ OSApp.SiteMap.createView = function() {
 		] );
 	}
 
-	function showRunActions( sid, runIndex ) {
+	// at is the map point that was tapped, where a branch can start
+	function showRunActions( sid, runIndex, at ) {
 		var run = map.drawings[ sid ][ runIndex ],
-			min = OSApp.SiteMap.minRunPoints[ run.type ],
+			min = OSApp.SiteMap.getMinPoints( run ),
 			items = [
 				{ label: OSApp.Language._( "Add" ), icon: "plus", action: function() {
 					startDrawing( sid, run.type, run );
 				} }
-			];
+			],
+			branch = function( type ) {
+				return function() {
+					startDrawing( sid, type, null, nearestOnRun( sid, run, at ) );
+				};
+			};
+
+		if ( at ) {
+			items.push(
+				{ label: OSApp.Language._( "Add heads" ), icon: "plus", action: branch( "heads" ) },
+				{ label: OSApp.Language._( "Add drip line" ), icon: "plus", action: branch( "drip" ) }
+			);
+		}
 
 		if ( run.pts.length > min ) {
 			items.push( { label: OSApp.Language._( "Undo point" ), icon: "back", action: function() {
@@ -1667,8 +1766,7 @@ OSApp.SiteMap.createView = function() {
 				renderPins();
 			} } );
 		}
-		items.push( { label: run.type === "heads" ? OSApp.Language._( "Delete" ) : OSApp.Language._( "Delete" ),
-			icon: "delete", action: function() {
+		items.push( { label: OSApp.Language._( "Delete" ), icon: "delete", action: function() {
 				removeRun( sid, run );
 				persist( [ "drawings" ] );
 				renderPins();
@@ -1684,15 +1782,18 @@ OSApp.SiteMap.createView = function() {
 		}
 	}
 
-	// Draws a new run for a station, or adds points to an existing one
-	function startDrawing( sid, type, run ) {
+	// Draws a new run for a station, or adds points to an existing one. A new run starting at junction (a map point
+	// on another run) is a branch of it.
+	function startDrawing( sid, type, run, junction ) {
 		var isNew = !run;
 
 		if ( isNew ) {
-			run = { type: type, pts: [] };
+			run = junction ? { type: type, branch: true, pts: [ [ junction.x, junction.y ] ] } : { type: type, pts: [] };
 			( map.drawings[ sid ] = map.drawings[ sid ] || [] ).push( run );
 		}
-		drawing = { sid: sid, run: run, isNew: isNew, original: run.pts.map( function( pt ) {
+
+		// keep: points Undo can't take away, the ones the run had before, or a branch's junction
+		drawing = { sid: sid, run: run, isNew: isNew, keep: run.pts.length, original: run.pts.map( function( pt ) {
 			return pt.slice();
 		} ) };
 		drawbar.find( ".site-map-drawbar-label" ).text(
@@ -1707,7 +1808,13 @@ OSApp.SiteMap.createView = function() {
 
 		drawing = null;
 		page.removeClass( "site-map-drawing-mode" );
-		if ( current.run.pts.length < OSApp.SiteMap.minRunPoints[ current.run.type ] ) {
+
+		// A drip line given only its end runs from the valve
+		if ( current.isNew && !current.run.branch && current.run.type === "drip" && current.run.pts.length === 1 &&
+			map.pins[ current.sid ] ) {
+			current.run.pts.unshift( [ map.pins[ current.sid ].x, map.pins[ current.sid ].y ] );
+		}
+		if ( current.run.pts.length < OSApp.SiteMap.getMinPoints( current.run ) ) {
 			if ( current.isNew ) {
 				removeRun( current.sid, current.run );
 			} else {
@@ -1918,7 +2025,7 @@ OSApp.SiteMap.createView = function() {
 		}
 		if ( runTarget ) {
 			if ( editing ) {
-				showRunActions( runTarget.sid, runTarget.run );
+				showRunActions( runTarget.sid, runTarget.run, getRelativePosition( event ) );
 			} else {
 				controlStation( runTarget.sid );
 			}
@@ -2112,7 +2219,8 @@ OSApp.SiteMap.createView = function() {
 			persist( [ "drawings" ] );
 		} else if ( event.type === "pointerup" && !drawing ) {
 			ignoreFollowingClick( event );
-			showRunActions( current.sid, current.runIndex );
+			var point = map.drawings[ current.sid ][ current.runIndex ].pts[ current.pointIndex ];
+			showRunActions( current.sid, current.runIndex, { x: point[ 0 ], y: point[ 1 ] } );
 		}
 	} );
 
@@ -2293,7 +2401,7 @@ OSApp.SiteMap.createView = function() {
 	} );
 
 	drawbar.find( ".site-map-draw-undo" ).on( "click", function() {
-		if ( drawing && drawing.run.pts.length > ( drawing.isNew ? 0 : drawing.original.length ) ) {
+		if ( drawing && drawing.run.pts.length > drawing.keep ) {
 			drawing.run.pts.pop();
 			renderPins();
 		}

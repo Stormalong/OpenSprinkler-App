@@ -1005,14 +1005,13 @@ describe("Site Map Checks", function () {
 		});
 	});
 
-	it("should discard a drip line with fewer than two points", function (done) {
+	it("should discard a drip line that was given no points", function (done) {
 		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 3: { x: 0.5, y: 0.5 } } });
 
 		showSiteMap(done, function (page) {
 			page.find(".site-map-edit").trigger("click");
 			tap(page.find(".site-map-pin"));
 			return chooseAction("Add drip line").then(function () {
-				tapMap(page, 0.9, 0.9);
 				page.find(".site-map-draw-done").trigger("click");
 				assert.lengthOf(page.find(".site-map-run"), 0);
 				return storedMap();
@@ -1048,6 +1047,129 @@ describe("Site Map Checks", function () {
 				return doneEditing(page);
 			}).then(function (map) {
 				assert.lengthOf(map.drawings[1][0].pts, 3);
+			});
+		});
+	});
+
+	it("should store branches as runs that start on another run", function () {
+		var drawings = {
+				0: [
+					{ type: "drip", pts: [[0.1, 0.5], [0.9, 0.5]] },
+					{ type: "heads", branch: true, pts: [[0.5, 0.5], [0.5, 0.8], [0.6, 0.9]] },
+					{ type: "drip", branch: true, pts: [[0.3, 0.5], [0.3, 0.2]] }
+				]
+			},
+			text = OSApp.SiteMap.encodeDrawings(drawings);
+
+		assert.equal(text, "d,0,1000,5000,9000,5000\nH,0,5000,5000,5000,8000,6000,9000\nD,0,3000,5000,3000,2000\n");
+		assert.deepEqual(OSApp.SiteMap.decodeDrawings(text), drawings);
+
+		// A branch of heads needs a head besides the point it starts from
+		assert.deepEqual(OSApp.SiteMap.decodeDrawings("H,0,5000,5000\nh,1,5000,5000\n"), { 1: [{ type: "heads", pts: [[0.5, 0.5]] }] });
+		assert.equal(OSApp.SiteMap.getMinPoints({ type: "heads", branch: true }), 2);
+		assert.equal(OSApp.SiteMap.getMinPoints({ type: "heads" }), 1);
+		assert.equal(OSApp.SiteMap.getMinPoints({ type: "drip", branch: true }), 2);
+	});
+
+	it("should find the point on a curve nearest to another point", function () {
+		var straight = OSApp.SiteMap.getCurve([{ x: 0, y: 0 }, { x: 100, y: 0 }]),
+			bent = OSApp.SiteMap.getCurve([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]),
+			nearest = OSApp.SiteMap.nearestOnCurve(straight, { x: 40, y: 25 }),
+			corner = OSApp.SiteMap.nearestOnCurve(bent, { x: 100, y: 0 });
+
+		assert.closeTo(nearest.x, 40, 0.5);
+		assert.closeTo(nearest.y, 0, 0.5);
+		assert.closeTo(corner.x, 100, 0.5);
+		assert.closeTo(corner.y, 0, 0.5);
+
+		// Off the end, it stops at the end
+		nearest = OSApp.SiteMap.nearestOnCurve(straight, { x: 150, y: 10 });
+		assert.closeTo(nearest.x, 100, 0.5);
+		assert.closeTo(nearest.y, 0, 0.5);
+	});
+
+	it("should draw a branch from its junction, without a pipe from the valve or a head at the junction", function (done) {
+		OSApp.SiteMap.save(siteName, {
+			image: testImage,
+			pins: { 0: { x: 0.05, y: 0.5 } },
+			drawings: { 0: [
+				{ type: "heads", pts: [[0.2, 0.5], [0.8, 0.5]] },
+				{ type: "heads", branch: true, pts: [[0.5, 0.5], [0.5, 0.8], [0.6, 0.9]] }
+			] }
+		});
+
+		showSiteMap(done, function (page) {
+			var runs = page.find(".site-map-run"),
+				branch = runs.eq(1),
+				map = imageRect(page),
+				container = page.find(".site-map-container")[0].getBoundingClientRect(),
+				junction = branch.find(".site-map-junction");
+
+			assert.lengthOf(runs.eq(0).find(".site-map-run-feed"), 1);
+			assert.lengthOf(branch.find(".site-map-run-feed"), 0);
+			assert.lengthOf(branch.find(".site-map-head"), 2);
+			assert.lengthOf(junction, 1);
+			assert.closeTo(Number(junction.attr("cx")), map.left - container.left + 0.5 * map.width, 0.5);
+			assert.closeTo(Number(junction.attr("cy")), map.top - container.top + 0.5 * map.height, 0.5);
+		});
+	});
+
+	it("should branch a new run off the spot where a line was tapped", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: { 1: [{ type: "drip", pts: [[0.1, 0.5], [0.9, 0.5]] }] } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tapMap(page, 0.4, 0.5);
+			return chooseAction(OSApp.Language._("Add heads")).then(function () {
+				// Undo can't take away the junction
+				page.find(".site-map-draw-undo").trigger("click");
+				tapMap(page, 0.4, 0.8);
+				page.find(".site-map-draw-done").trigger("click");
+				return doneEditing(page);
+			}).then(function (map) {
+				var branch = map.drawings[1][1];
+
+				assert.lengthOf(map.drawings[1], 2);
+				assert.equal(branch.type, "heads");
+				assert.isTrue(branch.branch);
+				assert.lengthOf(branch.pts, 2);
+				assert.closeTo(branch.pts[0][0], 0.4, 0.01);
+				assert.closeTo(branch.pts[0][1], 0.5, 0.005);
+				assert.closeTo(branch.pts[1][1], 0.8, 0.01);
+			});
+		});
+	});
+
+	it("should discard a branch that gets no points of its own", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: { 1: [{ type: "drip", pts: [[0.1, 0.5], [0.9, 0.5]] }] } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tapMap(page, 0.6, 0.5);
+			return chooseAction(OSApp.Language._("Add drip line")).then(function () {
+				page.find(".site-map-draw-done").trigger("click");
+				return doneEditing(page);
+			}).then(function (map) {
+				assert.lengthOf(map.drawings[1], 1);
+			});
+		});
+	});
+
+	it("should run a one-segment drip line from its valve when only its end is tapped", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.2 }, 1: { x: 0.8, y: 0.2 } }, drawings: {} });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tap(page.find(".site-map-pin[data-sids='0']"));
+			return chooseAction(OSApp.Language._("Add drip line")).then(function () {
+				tapMap(page, 0.5, 0.7);
+				page.find(".site-map-draw-done").trigger("click");
+				return doneEditing(page);
+			}).then(function (map) {
+				assert.lengthOf(map.drawings[0], 1);
+				assert.deepEqual(map.drawings[0][0].pts[0], [0.2, 0.2]);
+				assert.closeTo(map.drawings[0][0].pts[1][0], 0.5, 0.01);
+				assert.closeTo(map.drawings[0][0].pts[1][1], 0.7, 0.01);
 			});
 		});
 	});
