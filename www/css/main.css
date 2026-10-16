@@ -1822,10 +1822,15 @@ button[id^="start_1-"] {
 	margin: 0;
 }
 
-/* The view button stacks above the menu button, so the cards need room to scroll clear of both */
+/* The view button stacks above the menu button, so the cards need room to scroll clear of both.
+   The map is sized to the screen instead, so it keeps the normal padding. */
 @media (max-width: 640px) {
-	#os-stations-list {
+	#sprinklers .ui-content {
 		padding-bottom: calc(env(safe-area-inset-bottom) + 10vh + 118px);
+	}
+
+	#sprinklers.home-map-view .ui-content {
+		padding-bottom: 1em;
 	}
 }
 

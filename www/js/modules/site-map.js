@@ -557,7 +557,8 @@ OSApp.SiteMap.attachToHome = function( page ) {
 				.toggleClass( "ui-icon-location", mode !== "map" )
 				.attr( { title: label, "aria-label": label } )
 				.text( label );
-			page.find( "#os-stations-list" ).toggle( mode === "cards" );
+			page.toggleClass( "home-map-view", mode === "map" )
+				.find( "#os-stations-list" ).toggle( mode === "cards" );
 			view.root.toggle( mode === "map" );
 			if ( mode === "map" && shown ) {
 				view.activate();
