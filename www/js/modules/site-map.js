@@ -41,6 +41,9 @@ OSApp.SiteMap.Constants = {
 	uploadChunkChars: 6000,
 	pinSaveDelay: 500,
 
+	// After a pan or zoom stops for this long (ms), valves are regrouped and everything is redrawn
+	settleDelay: 150,
+
 	// The first point of a run snaps to its valve when tapped within this many pixels of it
 	snapRadius: 24
 };
@@ -166,6 +169,23 @@ OSApp.SiteMap.decodeDrawings = function( text, stationCount ) {
 		( drawings[ sid ] = drawings[ sid ] || [] ).push( { type: type, pts: pts } );
 	} );
 	return OSApp.SiteMap.cleanDrawings( drawings, stationCount );
+};
+
+// Kinds of station that look different on the map: master valves and Bundle Stations can't be run from it like a zone
+OSApp.SiteMap.getStationKind = function( sid ) {
+	if ( OSApp.Stations.isMaster( sid ) ) {
+		return "master";
+	}
+	if ( OSApp.Bundles.isLeader( sid ) ) {
+		return "bundle";
+	}
+	return "zone";
+};
+
+// Seconds left for a running station, following the home page's countdown when there is one
+OSApp.SiteMap.getRemaining = function( sid ) {
+	var timer = OSApp.uiState.timers && OSApp.uiState.timers[ "station-" + sid ];
+	return timer && typeof timer.val === "number" ? timer.val : OSApp.Stations.getRemainingRuntime( sid );
 };
 
 // { sid: { x, y } } with x/y from 0-1 to "sid,x,y;..." with x/y from 0 to coordScale
@@ -681,7 +701,14 @@ OSApp.SiteMap.createView = function() {
 		gesture = null,
 		gestureScale = 1,
 		animationFrame = null,
-		renderQueued = false;
+		renderQueued = false,
+		moveQueued = false,
+		settleTimer = null,
+
+		// The drawings group and the view it was drawn for, so moves can be applied as a transform
+		drawRoot = null,
+		renderedView = null,
+		timeTimer = null;
 
 	// Records changes to the pins and/or drawings. While editing they are kept until Done; otherwise they are
 	// saved right away, and on the controller they are batched so dragging sends one request
@@ -782,7 +809,7 @@ OSApp.SiteMap.createView = function() {
 		}
 		if ( source === "controller" ) {
 			OSApp.SiteMap.save( siteName, map, true );
-			uploadChanges().then( showSaved );
+			saveUnlessChangedElsewhere( snapshot ? snapshot.rev : undefined );
 			return;
 		}
 		dirty = { pins: false, drawings: false, image: false };
@@ -795,6 +822,33 @@ OSApp.SiteMap.createView = function() {
 			image.attr( "src", map.image || "" );
 			OSApp.SiteMap.save( siteName, map );
 		}
+	}
+
+	// Before uploading an edit, makes sure nobody saved the map from another device since editing started;
+	// if they did, asks whether to overwrite their changes or load them and drop this edit
+	function saveUnlessChangedElsewhere( startRev ) {
+		var save = function() {
+			return uploadChanges().then( showSaved );
+		};
+
+		track( OSApp.SiteMap.fetchRemote().then( function( remote ) {
+			var decided = $.Deferred();
+
+			if ( startRev === undefined || remote.rev === startRev ) {
+				return save();
+			}
+			OSApp.UIDom.areYouSure( OSApp.Language._( "The site map was changed on another device. Save your changes anyway?" ), "",
+				function() {
+					save().always( decided.resolve );
+				},
+				function() {
+					dirty = { pins: false, drawings: false, image: false };
+					OSApp.SiteMap.syncFromController( siteName, {} ).then( function( loaded ) {
+						showMap( loaded, "controller" );
+					} ).always( decided.resolve );
+				} );
+			return decided.promise();
+		}, save ) );
 	}
 
 	// Picks up changes saved from other devices
@@ -820,7 +874,7 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	function copyMap( from ) {
-		return { image: from.image, pins: $.extend( true, {}, from.pins ), drawings: $.extend( true, {}, from.drawings ) };
+		return { image: from.image, pins: $.extend( true, {}, from.pins ), drawings: $.extend( true, {}, from.drawings ), rev: from.rev };
 	}
 
 	// Starts or ends editing. Ending saves the changes made since editing started, unless discard is set,
@@ -955,8 +1009,9 @@ OSApp.SiteMap.createView = function() {
 		};
 	}
 
-	// fromAnimation is set by animateView; any other change, such as a drag or pinch, stops a running animation
-	function setView( next, fromAnimation ) {
+	// fromAnimation is set by animateView; any other change, such as a drag or pinch, stops a running animation.
+	// moving marks a step of a continuous change (drag, pinch, wheel, animation), drawn with the fast path.
+	function setView( next, fromAnimation, moving ) {
 		var size = getSize();
 
 		if ( !fromAnimation ) {
@@ -966,7 +1021,11 @@ OSApp.SiteMap.createView = function() {
 		lastWidth = size.width;
 		image.css( "transform", "translate(" + view.x + "px, " + view.y + "px) scale(" + view.scale + ")" );
 		container.toggleClass( "site-map-zoomed", view.scale > 1 );
-		scheduleRender();
+		if ( moving || fromAnimation ) {
+			scheduleMove();
+		} else {
+			scheduleRender();
+		}
 	}
 
 	function stopAnimation() {
@@ -1009,6 +1068,9 @@ OSApp.SiteMap.createView = function() {
 
 			setView( t < 1 ? { scale: scale, x: width / 2 - x * width * scale, y: height / 2 - y * height * scale } : end, true );
 			animationFrame = t < 1 ? window.requestAnimationFrame( step ) : null;
+			if ( t >= 1 ) {
+				scheduleRender();
+			}
 		} );
 	}
 
@@ -1025,13 +1087,20 @@ OSApp.SiteMap.createView = function() {
 		goToView( { scale: 1, x: 0, y: 0 }, animate );
 	}
 
-	function zoomBy( factor, px, py, animate ) {
-		var size = getSize();
+	// moving: one step of a continuous zoom (wheel, trackpad pinch)
+	function zoomBy( factor, px, py, animate, moving ) {
+		var size = getSize(),
+			next;
 		if ( px === undefined ) {
 			px = size.width / 2;
 			py = size.height / 2;
 		}
-		goToView( OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, Constants.maxZoom ), animate );
+		next = OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, Constants.maxZoom );
+		if ( moving ) {
+			setView( next, false, true );
+		} else {
+			goToView( next, animate );
+		}
 	}
 
 	// Zoom in and center on a map point
@@ -1046,6 +1115,8 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	function scheduleRender() {
+		clearTimeout( settleTimer );
+		settleTimer = null;
 		if ( renderQueued ) {
 			return;
 		}
@@ -1053,6 +1124,23 @@ OSApp.SiteMap.createView = function() {
 		window.requestAnimationFrame( function() {
 			renderQueued = false;
 			renderPins();
+		} );
+	}
+
+	// Moves what is drawn on the next frame, then redraws fully once the view has been still for a moment
+	function scheduleMove() {
+		clearTimeout( settleTimer );
+		settleTimer = setTimeout( function() {
+			settleTimer = null;
+			scheduleRender();
+		}, Constants.settleDelay );
+		if ( moveQueued ) {
+			return;
+		}
+		moveQueued = true;
+		window.requestAnimationFrame( function() {
+			moveQueued = false;
+			repositionLayers();
 		} );
 	}
 
@@ -1079,19 +1167,50 @@ OSApp.SiteMap.createView = function() {
 				} ).join( ", " ),
 				screen = toScreen( cluster );
 
-			// No visible label so pins don't cover the map; names show as a tooltip and in the dialogs opened by a tap
+			var sid = cluster.sids[ 0 ],
+				running = !isGroup && OSApp.SiteMap.getPinState( sid ) === "running";
+
+			// No visible label so pins don't cover the map; names show as a tooltip and in the dialogs opened by a tap.
+			// Running valves show their time left, and masters and Bundle Stations are marked.
 			$( "<div class='site-map-pin'><span class='site-map-pin-head'>" + ( isGroup ? "<span class='site-map-pin-count'></span>" : VALVE_ICON ) +
-				"</span></div>" )
+				"</span>" + ( isGroup ? "" : kindBadge( sid, "site-map-pin-badge" ) ) + ( running ? "<span class='site-map-pin-time'></span>" : "" ) +
+				"</div>" )
 				.attr( { "data-sids": cluster.sids.join( "," ), "data-x": cluster.x, "data-y": cluster.y, title: names, "aria-label": names } )
 				.toggleClass( "site-map-pin-group", isGroup )
 				.addClass( "site-map-pin-" + OSApp.SiteMap.getClusterState( cluster.sids ) )
+				.addClass( isGroup ? "" : "site-map-pin-kind-" + OSApp.SiteMap.getStationKind( sid ) )
 				.css( { left: screen.left + "px", top: screen.top + "px" } )
 				.find( ".site-map-pin-count" ).text( isGroup ? cluster.sids.length : "" ).end()
 				.appendTo( pinLayer );
 		} );
 
 		renderDrawings( stationCount );
+		updateTimes();
 		updateHint();
+	}
+
+	// A short marker for stations that aren't ordinary zones: "M" for master valves, the station type's badge otherwise
+	function kindBadge( sid, className ) {
+		var text = OSApp.Stations.isMaster( sid ) ? "M" : OSApp.Stations.getSpecialBadge( sid );
+		return text ? "<span class='" + className + "'>" + OSApp.Utils.htmlEscape( text ) + "</span>" : "";
+	}
+
+	// Counts down the time left on running valves, between status refreshes
+	function updateTimes() {
+		pinLayer.find( ".site-map-pin-time" ).each( function() {
+			var pin = $( this ).closest( ".site-map-pin" ),
+				sid = Number( pin.attr( "data-sids" ) ),
+				remaining = OSApp.SiteMap.getRemaining( sid ),
+				name = OSApp.Stations.getName( sid );
+
+			if ( remaining > 0 ) {
+				$( this ).text( OSApp.Dates.sec2hms( remaining ) );
+				pin.attr( "title", name + " (" + OSApp.Dates.sec2hms( remaining ) + " " + OSApp.Language._( "remaining" ) + ")" );
+			} else {
+				$( this ).text( "" );
+				pin.attr( "title", name );
+			}
+		} );
 	}
 
 	function svgElement( tag, attributes ) {
@@ -1114,6 +1233,11 @@ OSApp.SiteMap.createView = function() {
 		}
 		layer.setAttribute( "width", size.width );
 		layer.setAttribute( "height", size.height );
+
+		// Everything is drawn into one group, so a pan or zoom can move it with a transform (see repositionLayers)
+		drawRoot = svgElement( "g", { "class": "site-map-drawings-root" } );
+		layer.appendChild( drawRoot );
+		renderedView = { scale: view.scale, x: view.x, y: view.y };
 		container.toggleClass( "site-map-drawing", !!drawing );
 
 		$.each( map.drawings, function( sid ) {
@@ -1176,9 +1300,29 @@ OSApp.SiteMap.createView = function() {
 						} ) );
 					}
 				} );
-				layer.appendChild( group );
+				drawRoot.appendChild( group );
 			} );
 		} );
+	}
+
+	// While the view is moving, move what is already drawn instead of rebuilding it: valves are repositioned
+	// and the drawings shifted and scaled as one piece. Groups of valves are recomputed once the view settles.
+	function repositionLayers() {
+		var size = getSize(),
+			width = size.width * view.scale,
+			height = size.height * view.scale,
+			ratio;
+
+		// Size is read once, not per valve, to avoid a layout pass for each one
+		pinLayer.children( ".site-map-pin" ).each( function() {
+			this.style.left = ( view.x + Number( this.getAttribute( "data-x" ) ) * width ) + "px";
+			this.style.top = ( view.y + Number( this.getAttribute( "data-y" ) ) * height ) + "px";
+		} );
+		if ( drawRoot && renderedView ) {
+			ratio = view.scale / renderedView.scale;
+			drawRoot.setAttribute( "transform", "translate(" + ( view.x - ratio * renderedView.x ) + " " + ( view.y - ratio * renderedView.y ) +
+				") scale(" + ratio + ")" );
+		}
 	}
 
 	function updatePinStates() {
@@ -1487,7 +1631,8 @@ OSApp.SiteMap.createView = function() {
 			if ( Object.prototype.hasOwnProperty.call( map.pins, sid ) ) {
 				continue;
 			}
-			list += "<li><a href='#' data-sid='" + sid + "'>" + OSApp.Utils.htmlEscape( OSApp.Stations.getName( sid ) ) + "</a></li>";
+			list += "<li><a href='#' data-sid='" + sid + "'>" + OSApp.Utils.htmlEscape( OSApp.Stations.getName( sid ) ) +
+				kindBadge( sid, "site-map-picker-badge" ) + "</a></li>";
 		}
 
 		if ( list === "" ) {
@@ -1776,7 +1921,7 @@ OSApp.SiteMap.createView = function() {
 				// Pan with the midpoint so the map follows both fingers
 				next.x += ( current.x + other.x ) / 2 - oldMid.x;
 				next.y += ( current.y + other.y ) / 2 - oldMid.y;
-				setView( next );
+				setView( next, false, true );
 			}
 			pointers[ e.pointerId ] = current;
 			return;
@@ -1787,7 +1932,7 @@ OSApp.SiteMap.createView = function() {
 		}
 		gesture.moved = true;
 		container.addClass( "site-map-panning" );
-		setView( { scale: view.scale, x: view.x + current.x - previous.x, y: view.y + current.y - previous.y } );
+		setView( { scale: view.scale, x: view.x + current.x - previous.x, y: view.y + current.y - previous.y }, false, true );
 		pointers[ e.pointerId ] = current;
 	} );
 
@@ -1836,7 +1981,7 @@ OSApp.SiteMap.createView = function() {
 			return;
 		}
 		event.preventDefault();
-		zoomBy( Math.pow( 2, -delta / ( event.ctrlKey ? 100 : 300 ) ), event.clientX - rect.left, event.clientY - rect.top );
+		zoomBy( Math.pow( 2, -delta / ( event.ctrlKey ? 100 : 300 ) ), event.clientX - rect.left, event.clientY - rect.top, false, true );
 	}, { passive: false } );
 
 	// Safari reports trackpad pinches as gesture events instead of wheel events
@@ -1854,7 +1999,7 @@ OSApp.SiteMap.createView = function() {
 		if ( Object.keys( pointers ).length ) {
 			return;
 		}
-		zoomBy( gestureScale * event.scale / view.scale, event.clientX - rect.left, event.clientY - rect.top );
+		zoomBy( gestureScale * event.scale / view.scale, event.clientX - rect.left, event.clientY - rect.top, false, true );
 	} );
 
 	// Keyboard: + and - zoom, 0 resets, arrow keys pan
@@ -1998,6 +2143,10 @@ OSApp.SiteMap.createView = function() {
 		$( "html" ).off( "datarefresh.sitemap" );
 		$( window ).off( "resize.sitemap" );
 		$( document ).off( "keydown.sitemap" );
+		clearInterval( timeTimer );
+		timeTimer = null;
+		clearTimeout( settleTimer );
+		settleTimer = null;
 		if ( layoutObserver ) {
 			layoutObserver.disconnect();
 			layoutObserver = null;
@@ -2012,6 +2161,8 @@ OSApp.SiteMap.createView = function() {
 		$( "html" ).off( "datarefresh.sitemap" ).on( "datarefresh.sitemap", onDataRefresh );
 		$( window ).off( "resize.sitemap" ).on( "resize.sitemap", onResize );
 		$( document ).off( "keydown.sitemap" ).on( "keydown.sitemap", onKeydown );
+		clearInterval( timeTimer );
+		timeTimer = setInterval( updateTimes, 1000 );
 		watchLayoutAbove();
 		fitMap();
 		setView( view );

@@ -2116,6 +2116,66 @@ button[id^="start_1-"] {
 	display: none;
 }
 
+/* Valve markers: time left on a running valve, and a badge for masters and special stations */
+.site-map-pin-time {
+	position: absolute;
+	top: 100%;
+	left: 50%;
+	transform: translateX(-50%);
+	margin-top: 2px;
+	padding: 0 4px;
+	border-radius: 3px;
+	background: rgba(0, 0, 0, 0.7);
+	color: #fff;
+	font-size: 11px;
+	line-height: 15px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.site-map-pin-time:empty {
+	display: none;
+}
+
+.site-map-pin-badge {
+	position: absolute;
+	top: -6px;
+	right: -8px;
+	min-width: 14px;
+	padding: 0 3px;
+	box-sizing: border-box;
+	border: 1px solid #fff;
+	border-radius: 7px;
+	background: #517d99;
+	color: #fff;
+	font-size: 9px;
+	font-weight: bold;
+	line-height: 12px;
+	text-align: center;
+	pointer-events: none;
+}
+
+.site-map-pin-kind-master.site-map-pin-idle .site-map-pin-head {
+	background: #6c4f99;
+}
+
+.site-map-picker-badge {
+	margin-left: 6px;
+	padding: 1px 5px;
+	border-radius: 3px;
+	background: #517d99;
+	color: #fff;
+	font-size: 11px;
+}
+
+/* Strokes keep their width while the drawings are scaled during a zoom */
+.site-map-drawings-root line,
+.site-map-drawings-root polyline,
+.site-map-drawings-root path,
+.site-map-drawings-root circle {
+	vector-effect: non-scaling-stroke;
+}
+
 /* Head runs and drip lines */
 .site-map-drawings {
 	position: absolute;

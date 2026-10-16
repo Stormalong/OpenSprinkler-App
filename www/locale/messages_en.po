@@ -2819,3 +2819,6 @@ msgstr ""
 
 msgid "Zoom Out"
 msgstr ""
+
+msgid "The site map was changed on another device. Save your changes anyway?"
+msgstr ""

@@ -501,10 +501,25 @@ describe("Site Map Checks", function () {
 					head = page.find(".site-map-head")[0],
 					x = Number(match[1]), y = Number(match[2]), scale = Number(match[3]);
 
+				var box = head.getBoundingClientRect(),
+					mapBox = container[0].getBoundingClientRect(),
+					check = function () {
+						box = head.getBoundingClientRect();
+						assert.closeTo(box.left + box.width / 2 - mapBox.left, x + 0.25 * container.width() * scale, 1);
+						assert.closeTo(box.top + box.height / 2 - mapBox.top, y + 0.75 * container.height() * scale, 1);
+					};
+
 				assert.isAbove(scale, 1);
-				assert.closeTo(Number(head.getAttribute("cx")), x + 0.25 * container.width() * scale, 0.5);
-				assert.closeTo(Number(head.getAttribute("cy")), y + 0.75 * container.height() * scale, 0.5);
-				page.find(".site-map-zoom-reset").trigger("click");
+
+				// Right away, while the drawings are moved as one piece, and after they are redrawn
+				check();
+				return new Promise(function (resolve) {
+					setTimeout(resolve, OSApp.SiteMap.Constants.settleDelay + 100);
+				}).then(nextFrame).then(function () {
+					head = page.find(".site-map-head")[0];
+					check();
+					page.find(".site-map-zoom-reset").trigger("click");
+				});
 			});
 		});
 	});
@@ -1263,6 +1278,238 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	// Station changes: valves are stored by station number, which is the controller's output terminal, so they
+	// follow the station through renames and board changes the same way programs and the rest of the setup do
+
+	// Changes the station list like adding or removing expansion boards does; added stations get the
+	// status entries a controller reports for them
+	function withStationNames(names, run) {
+		var controller = OSApp.currentSession.controller,
+			stations = controller.stations,
+			original = { snames: stations.snames, ps: controller.settings.ps, status: controller.status };
+
+		stations.snames = names;
+		controller.settings.ps = names.map(function (name, sid) {
+			return original.ps[sid] || [0, 0, 0];
+		});
+		controller.status = names.map(function (name, sid) {
+			return original.status[sid] || 0;
+		});
+		return Promise.resolve().then(run).finally(function () {
+			stations.snames = original.snames;
+			controller.settings.ps = original.ps;
+			controller.status = original.status;
+			$("html").trigger("datarefresh");
+		});
+	}
+
+	it("should keep a valve on its station and keep it working after the station is renamed", function () {
+		var names = OSApp.currentSession.controller.stations.snames.slice(),
+			duration = sinon.stub(OSApp.UIDom, "showDurationBox");
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.3, y: 0.5 } }, drawings: { 0: [{ type: "drip", pts: [[0.3, 0.5], [0.6, 0.5]] }] } });
+		return openHomeMap().then(function (page) {
+			names[0] = "Renamed Front Lawn";
+			return withStationNames(names, function () {
+				$("html").trigger("datarefresh");
+				var pin = page.find(".site-map-pin");
+
+				assert.lengthOf(pin, 1);
+				assert.equal(pin.attr("data-sids"), "0");
+				assert.include(pin.attr("title"), "Renamed Front Lawn");
+				assert.lengthOf(page.find(".site-map-run"), 1);
+
+				// No warning or confirmation: tapping runs the renamed station
+				tap(pin);
+				assert.isTrue(duration.calledOnce);
+				assert.include(duration.firstCall.args[0].title, "Renamed Front Lawn");
+			});
+		}).finally(function () {
+			duration.restore();
+		});
+	});
+
+	it("should hide valves for stations removed with an expansion board, and bring them back when it returns", function () {
+		var all = OSApp.currentSession.controller.stations.snames.slice(),
+			last = all.length - 1;
+
+		OSApp.SiteMap.save(siteName, {
+			image: testImage,
+			pins: { 0: { x: 0.2, y: 0.5 } },
+			drawings: {}
+		});
+		var pins = { 0: { x: 0.2, y: 0.5 } }, drawings = {};
+		pins[last] = { x: 0.7, y: 0.5 };
+		drawings[last] = [{ type: "drip", pts: [[0.7, 0.5], [0.8, 0.6]] }];
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: pins, drawings: drawings });
+
+		return openHomeMap().then(function (page) {
+			assert.lengthOf(page.find(".site-map-pin"), 2);
+
+			// Fewer stations: the valve on the missing station is hidden, not deleted
+			return withStationNames(all.slice(0, last), function () {
+				$("html").trigger("datarefresh");
+				assert.lengthOf(page.find(".site-map-pin"), 1);
+				assert.lengthOf(page.find(".site-map-run"), 0);
+
+				// Saving an edit while it's hidden keeps it
+				page.find(".site-map-edit").trigger("click");
+				tapMap(page, 0.4, 0.3);
+				return chooseAction(OSApp.Stations.getName(1)).then(function () {
+					return doneEditing(page);
+				}).then(function (map) {
+					assert.property(map.pins, String(last));
+					assert.property(map.drawings, String(last));
+				});
+			}).then(function () {
+				// The board is back
+				assert.lengthOf(page.find(".site-map-pin"), 3);
+				assert.lengthOf(page.find(".site-map-run"), 1);
+			});
+		});
+	});
+
+	it("should offer new stations from an added expansion board without changing existing valves", function () {
+		var names = OSApp.currentSession.controller.stations.snames.concat(["New Board Zone 1", "New Board Zone 2"]);
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} });
+		return openHomeMap().then(function (page) {
+			return withStationNames(names, function () {
+				$("html").trigger("datarefresh");
+				assert.equal(page.find(".site-map-pin").attr("data-sids"), "0");
+
+				page.find(".site-map-edit").trigger("click");
+				tapMap(page, 0.5, 0.5);
+				return waitFor(function () {
+					return $(".ui-popup-active .site-map-picker a").length > 0;
+				}).then(function () {
+					var listed = $(".ui-popup-active .site-map-picker a").map(function () {
+						return $(this).text();
+					}).get();
+					assert.include(listed.join("|"), "New Board Zone 2");
+					return chooseAction(listed.filter(function (label) {
+						return label.indexOf("New Board Zone 2") === 0;
+					})[0]);
+				}).then(function () {
+					return doneEditing(page);
+				}).then(function (map) {
+					assert.property(map.pins, String(names.length - 1));
+					assert.deepEqual(map.pins[0], { x: 0.2, y: 0.5 });
+				});
+			});
+		});
+	});
+
+	// Remaining time and special stations
+
+	it("should show the time left on a running valve and count it down", function () {
+		var state = sinon.stub(OSApp.SiteMap, "getPinState").callsFake(function (sid) {
+				return sid === 0 ? "running" : "idle";
+			});
+
+		OSApp.uiState.timers["station-0"] = { val: 125, station: 0, update: function () {}, done: function () {} };
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.5 }, 1: { x: 0.7, y: 0.5 } }, drawings: {} });
+		return openHomeMap().then(function (page) {
+			var time = page.find(".site-map-pin[data-sids='0'] .site-map-pin-time");
+
+			assert.equal(time.text(), "02:05");
+			assert.include(page.find(".site-map-pin[data-sids='0']").attr("title"), "02:05");
+			assert.lengthOf(page.find(".site-map-pin[data-sids='1'] .site-map-pin-time"), 0);
+
+			OSApp.uiState.timers["station-0"].val = 64;
+			return new Promise(function (resolve) {
+				setTimeout(resolve, 1100);
+			}).then(function () {
+				assert.equal(time.text(), "01:04");
+			});
+		}).finally(function () {
+			delete OSApp.uiState.timers["station-0"];
+			state.restore();
+		});
+	});
+
+	it("should mark master valves and special stations, on the map and in the list of stations", function () {
+		var master = sinon.stub(OSApp.Stations, "isMaster").callsFake(function (sid) {
+				return sid === 1 ? 1 : 0;
+			}),
+			badge = sinon.stub(OSApp.Stations, "getSpecialBadge").callsFake(function (sid) {
+				return sid === 2 ? "BD" : "";
+			});
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.3 }, 1: { x: 0.5, y: 0.3 }, 2: { x: 0.8, y: 0.3 } }, drawings: {} });
+		return openHomeMap().then(function (page) {
+			assert.lengthOf(page.find(".site-map-pin[data-sids='0'] .site-map-pin-badge"), 0);
+			assert.equal(page.find(".site-map-pin[data-sids='1'] .site-map-pin-badge").text(), "M");
+			assert.isTrue(page.find(".site-map-pin[data-sids='1']").hasClass("site-map-pin-kind-master"));
+			assert.equal(page.find(".site-map-pin[data-sids='2'] .site-map-pin-badge").text(), "BD");
+
+			// The list for adding a valve shows the same markers
+			OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: {} });
+			return openHomeMap();
+		}).then(function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tapMap(page, 0.5, 0.5);
+			return waitFor(function () {
+				return $(".ui-popup-active .site-map-picker a").length > 0;
+			}).then(function () {
+				var picker = $(".ui-popup-active .site-map-picker");
+				assert.equal(picker.find("a[data-sid='1'] .site-map-picker-badge").text(), "M");
+				assert.equal(picker.find("a[data-sid='2'] .site-map-picker-badge").text(), "BD");
+				assert.lengthOf(picker.find("a[data-sid='0'] .site-map-picker-badge"), 0);
+				picker.popup("close");
+				page.find(".site-map-cancel").trigger("click");
+			});
+		}).finally(function () {
+			master.restore();
+			badge.restore();
+		});
+	});
+
+	// Drawing performance
+
+	it("should move what is drawn while panning, and redraw once the view settles", function () {
+		OSApp.SiteMap.save(siteName, {
+			image: testImage,
+			pins: { 0: { x: 0.3, y: 0.5 } },
+			drawings: { 0: [{ type: "drip", pts: [[0.3, 0.5], [0.6, 0.5]] }] }
+		});
+
+		return openHomeMap().then(function (page) {
+			var container = page.find(".site-map-container"),
+				rect = container[0].getBoundingClientRect(),
+				pin = page.find(".site-map-pin")[0],
+				left = parseFloat(pin.style.left),
+				x = rect.left + rect.width / 2,
+				y = rect.top + rect.height / 2;
+
+			// Zoom in so the map can pan, then drag it
+			page.find(".site-map-zoom-in").trigger("click");
+			return new Promise(function (resolve) {
+				setTimeout(resolve, OSApp.SiteMap.Constants.settleDelay + 100);
+			}).then(nextFrame).then(function () {
+				pin = page.find(".site-map-pin")[0];
+				left = parseFloat(pin.style.left);
+				pointer(container, "pointerdown", x, y);
+				pointer(container, "pointermove", x - 30, y);
+				pointer(container, "pointermove", x - 60, y);
+				return nextFrame();
+			}).then(function () {
+				// The same elements were moved, not rebuilt, and the drawings shifted as a group
+				assert.strictEqual(page.find(".site-map-pin")[0], pin);
+				assert.closeTo(parseFloat(pin.style.left), left - 60, 1);
+				assert.include(page.find(".site-map-drawings-root").attr("transform") || "", "translate(-60");
+
+				pointer(container, "pointerup", x - 60, y);
+				return new Promise(function (resolve) {
+					setTimeout(resolve, OSApp.SiteMap.Constants.settleDelay + 100);
+				}).then(nextFrame);
+			}).then(function () {
+				assert.notStrictEqual(page.find(".site-map-pin")[0], pin);
+				assert.isNull(page.find(".site-map-drawings-root")[0].getAttribute("transform"));
+			});
+		});
+	});
+
 	it("should not list the site map in the menu", function () {
 		assert.lengthOf($("#sprinklers-settings a[href='#site-map']"), 0);
 	});
@@ -1727,6 +1974,92 @@ describe("Site Map Controller Storage", function () {
 
 				// Confirmed once the controller has it
 				assert.isTrue(OSApp.Errors.showError.calledWith("Settings have been saved"));
+			});
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	// Saving checks whether another device saved the map since editing started
+
+	function editAndSave(page, sendBeforeSave) {
+		var rect = page.find(".site-map-container")[0].getBoundingClientRect(),
+			event = function (element, type, x, y) {
+				element.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: "mouse", button: 0 }));
+			},
+			handle, r;
+
+		// Entering edit mode redraws the valves, so find the valve after that
+		page.find(".site-map-edit").trigger("click");
+		handle = page.find(".site-map-pin")[0];
+		r = handle.getBoundingClientRect();
+		event(handle, "pointerdown", r.left + r.width / 2, r.top + r.height / 2);
+		event(handle, "pointermove", rect.left + 0.2 * rect.width, rect.top + rect.height / 2);
+		event(handle, "pointerup", rect.left + 0.2 * rect.width, rect.top + rect.height / 2);
+		if (sendBeforeSave) {
+			sendBeforeSave();
+		}
+		page.find(".site-map-edit").trigger("click");
+		return new Promise(function (resolve) {
+			setTimeout(resolve, 300);
+		});
+	}
+
+	it("should save without asking when nobody else changed the map", function () {
+		var confirm = sandbox.stub(OSApp.UIDom, "areYouSure");
+
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			return editAndSave(page);
+		}).then(function () {
+			assert.isFalse(confirm.called);
+			assert.isBelow(remote.pins[0][0], 3000);
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should ask before overwriting changes saved from another device, and overwrite if confirmed", function () {
+		var confirm = sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes) {
+			yes();
+		});
+
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			return editAndSave(page, function () {
+				// Another device moves the valve while this one is editing
+				remote.pins = { 0: [9000, 9000] };
+				remote.rev++;
+			});
+		}).then(function () {
+			assert.isTrue(confirm.calledOnce);
+			assert.include(confirm.firstCall.args[0], "another device");
+			assert.isBelow(remote.pins[0][0], 3000);
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should load the other device's changes instead when overwriting is declined", function () {
+		var confirm = sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes, no) {
+			no();
+		});
+
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			return editAndSave(page, function () {
+				remote.pins = { 0: [9000, 9000] };
+				remote.rev++;
+			}).then(function () {
+				var map = page.find(".site-map-container")[0].getBoundingClientRect(),
+					pin = page.find(".site-map-pin")[0].getBoundingClientRect();
+
+				assert.isTrue(confirm.calledOnce);
+				assert.lengthOf(requestsTo("/cmp"), 0);
+				assert.deepEqual(remote.pins, { 0: [9000, 9000] });
+
+				// Showing the other device's version
+				assert.closeTo(pin.left + pin.width / 2 - map.left, 0.9 * map.width, 2);
 			});
 		}).finally(function () {
 			OSApp.SiteMap.setHomeView("cards");
