@@ -566,6 +566,34 @@ OSApp.SiteMap.getMaxZoom = function( pins, width, height, radius ) {
 	return scale === null ? Constants.maxZoomLimit : Math.max( Constants.maxZoom, scale );
 };
 
+// Smooth curve through points ({ x, y }), as one cubic Bezier segment { from, c1, c2, to } per pair of points.
+// Each point's tangent follows the line between its neighbours, so the curve bends through it without a corner;
+// control points sit a third of the segment's length out, so a long segment beside a short one doesn't loop.
+OSApp.SiteMap.getCurve = function( points ) {
+	var tangents = points.map( function( pt, i ) {
+			var before = points[ Math.max( 0, i - 1 ) ],
+				after = points[ Math.min( points.length - 1, i + 1 ) ],
+				dx = after.x - before.x,
+				dy = after.y - before.y,
+				length = Math.hypot( dx, dy );
+
+			return length ? { x: dx / length, y: dy / length } : { x: 0, y: 0 };
+		} ),
+		segments = [],
+		i, length;
+
+	for ( i = 0; i < points.length - 1; i++ ) {
+		length = Math.hypot( points[ i + 1 ].x - points[ i ].x, points[ i + 1 ].y - points[ i ].y ) / 3;
+		segments.push( {
+			from: points[ i ],
+			c1: { x: points[ i ].x + tangents[ i ].x * length, y: points[ i ].y + tangents[ i ].y * length },
+			c2: { x: points[ i + 1 ].x - tangents[ i + 1 ].x * length, y: points[ i + 1 ].y - tangents[ i + 1 ].y * length },
+			to: points[ i + 1 ]
+		} );
+	}
+	return segments;
+};
+
 // A view is { scale, x, y }: the image is drawn at scale times its fitted size, with its top-left corner offset x, y pixels
 // overscrollRight lets the map be dragged that many pixels further left than its right edge, so whatever
 // is under the buttons along the right side can be moved out from under them, even at normal zoom
@@ -1267,6 +1295,17 @@ OSApp.SiteMap.createView = function() {
 		return element;
 	}
 
+	// SVG path data for segments from OSApp.SiteMap.getCurve
+	function curvePath( segments ) {
+		var coords = function( pt ) {
+			return pt.x.toFixed( 1 ) + " " + pt.y.toFixed( 1 );
+		};
+
+		return "M" + coords( segments[ 0 ].from ) + segments.map( function( segment ) {
+			return "C" + coords( segment.c1 ) + " " + coords( segment.c2 ) + " " + coords( segment.to );
+		} ).join( "" );
+	}
+
 	// Head runs and drip lines, drawn in screen pixels so symbols and strokes keep their size when zoomed
 	function renderDrawings( stationCount ) {
 		var size = getSize(),
@@ -1303,10 +1342,15 @@ OSApp.SiteMap.createView = function() {
 
 			runs.forEach( function( run, runIndex ) {
 				var current = drawing && drawing.run === run,
-					points = run.pts.map( function( pt ) {
+					hasFeed = valve && run.pts.length && ( run.pts[ 0 ][ 0 ] !== valve.x || run.pts[ 0 ][ 1 ] !== valve.y ),
+					points = ( hasFeed ? [ [ valve.x, valve.y ] ] : [] ).concat( run.pts ).map( function( pt ) {
 						var screen = toScreen( { x: pt[ 0 ], y: pt[ 1 ] } );
-						return screen.left + "," + screen.top;
-					} ).join( " " ),
+						return { x: screen.left, y: screen.top };
+					} ),
+
+					// The pipe from the valve is the first piece of the same curve, so it bends smoothly into the run
+					curve = OSApp.SiteMap.getCurve( points ),
+					feed = hasFeed ? curve.shift() : null,
 					group = svgElement( "g", {
 						"class": "site-map-run site-map-run-" + run.type + " site-map-run-" + state +
 							( anyRunning && state !== "running" ? " site-map-run-dim" : "" ) + ( current ? " site-map-run-current" : "" ),
@@ -1319,16 +1363,14 @@ OSApp.SiteMap.createView = function() {
 				group.appendChild( title );
 
 				// Supply pipe from the valve to the run's first point
-				if ( valve && run.pts.length && ( run.pts[ 0 ][ 0 ] !== valve.x || run.pts[ 0 ][ 1 ] !== valve.y ) ) {
-					var from = toScreen( valve ),
-						to = toScreen( { x: run.pts[ 0 ][ 0 ], y: run.pts[ 0 ][ 1 ] } ),
-						feed = { x1: from.left, y1: from.top, x2: to.left, y2: to.top };
-
-					group.appendChild( svgElement( "line", $.extend( { "class": "site-map-run-hit" }, feed ) ) );
-					group.appendChild( svgElement( "line", $.extend( { "class": "site-map-run-feed" }, feed ) ) );
+				if ( feed ) {
+					group.appendChild( svgElement( "path", { "class": "site-map-run-hit", d: curvePath( [ feed ] ) } ) );
+					group.appendChild( svgElement( "path", { "class": "site-map-run-feed", d: curvePath( [ feed ] ) } ) );
 				}
-				group.appendChild( svgElement( "polyline", { "class": "site-map-run-hit", points: points } ) );
-				group.appendChild( svgElement( "polyline", { "class": "site-map-run-line", points: points } ) );
+				if ( curve.length ) {
+					group.appendChild( svgElement( "path", { "class": "site-map-run-hit", d: curvePath( curve ) } ) );
+					group.appendChild( svgElement( "path", { "class": "site-map-run-line", d: curvePath( curve ) } ) );
+				}
 
 				run.pts.forEach( function( pt, pointIndex ) {
 					var screen = toScreen( { x: pt[ 0 ], y: pt[ 1 ] } );

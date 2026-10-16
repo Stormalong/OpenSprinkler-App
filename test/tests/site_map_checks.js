@@ -595,9 +595,111 @@ describe("Site Map Checks", function () {
 			// The drip line starts at its valve and station 2 has no valve, so only the head run gets a pipe
 			assert.lengthOf(feeds, 1);
 			assert.equal(feeds.closest(".site-map-run").attr("class").indexOf("site-map-run-heads") !== -1, true);
-			assert.closeTo(Number(feeds.attr("x1")), 0.1 * width, 0.5);
-			assert.closeTo(Number(feeds.attr("y1")), 0.2 * height, 0.5);
-			assert.closeTo(Number(feeds.attr("x2")), 0.4 * width, 0.5);
+			assert.closeTo(pathPoint(feeds[0], 0).x, 0.1 * width, 0.5);
+			assert.closeTo(pathPoint(feeds[0], 0).y, 0.2 * height, 0.5);
+			assert.closeTo(pathPoint(feeds[0], 1).x, 0.4 * width, 0.5);
+			assert.closeTo(pathPoint(feeds[0], 1).y, 0.2 * height, 0.5);
+		});
+	});
+
+	// Point at a fraction (0-1) of the way along an SVG path
+	function pathPoint(path, fraction) {
+		return path.getPointAtLength(path.getTotalLength() * fraction);
+	}
+
+	// Direction of travel along a path at a fraction of its length, in radians
+	function pathDirection(path, fraction) {
+		var length = path.getTotalLength(),
+			a = path.getPointAtLength(Math.max(0, length * fraction - 1)),
+			b = path.getPointAtLength(Math.min(length, length * fraction + 1));
+		return Math.atan2(b.y - a.y, b.x - a.x);
+	}
+
+	it("should build a smooth curve through every point", function () {
+		var points = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 200, y: 150 }],
+			segments = OSApp.SiteMap.getCurve(points),
+			cross = function (a, b) {
+				return a.x * b.y - a.y * b.x;
+			},
+			minus = function (a, b) {
+				return { x: a.x - b.x, y: a.y - b.y };
+			};
+
+		// One curve per pair of points, starting and ending on the points
+		assert.lengthOf(segments, 3);
+		segments.forEach(function (segment, i) {
+			assert.deepEqual(segment.from, points[i]);
+			assert.deepEqual(segment.to, points[i + 1]);
+		});
+
+		// Smooth: where two curves meet, both leave the point in the same direction
+		[0, 1].forEach(function (i) {
+			var into = minus(segments[i].to, segments[i].c2),
+				out = minus(segments[i + 1].c1, segments[i + 1].from);
+			assert.closeTo(cross(into, out), 0, 1e-6);
+			assert.isAbove(into.x * out.x + into.y * out.y, 0);
+		});
+
+		// Controls stay within a segment's length of its ends, so a long segment next to a short one doesn't loop
+		OSApp.SiteMap.getCurve([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: 10 }, { x: 0, y: 10 }]).forEach(function (segment) {
+			var length = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+			assert.isAtMost(Math.hypot(segment.c1.x - segment.from.x, segment.c1.y - segment.from.y), length / 2);
+			assert.isAtMost(Math.hypot(segment.c2.x - segment.to.x, segment.c2.y - segment.to.y), length / 2);
+		});
+
+		// Two points make a straight line
+		var line = OSApp.SiteMap.getCurve([{ x: 0, y: 0 }, { x: 90, y: 30 }])[0];
+		assert.closeTo(cross(minus(line.c1, line.from), minus(line.to, line.from)), 0, 1e-6);
+		assert.closeTo(cross(minus(line.c2, line.from), minus(line.to, line.from)), 0, 1e-6);
+
+		assert.lengthOf(OSApp.SiteMap.getCurve([{ x: 5, y: 5 }]), 0);
+		assert.lengthOf(OSApp.SiteMap.getCurve([]), 0);
+	});
+
+	it("should draw runs as smooth curves through their heads, continuing the supply pipe", function (done) {
+		OSApp.SiteMap.save(siteName, {
+			image: testImage,
+			pins: { 0: { x: 0.1, y: 0.1 } },
+			drawings: { 0: [{ type: "heads", pts: [[0.3, 0.1], [0.5, 0.3], [0.5, 0.6]] }] }
+		});
+
+		showSiteMap(done, function (page) {
+			var line = page.find(".site-map-run-line")[0],
+				feed = page.find(".site-map-run-feed")[0],
+				heads = page.find(".site-map-head"),
+				length = line.getTotalLength(),
+				near = function (head) {
+					var x = Number(head.getAttribute("cx")), y = Number(head.getAttribute("cy")), best = Infinity;
+					for (var d = 0; d <= length; d += 0.5) {
+						var pt = line.getPointAtLength(d);
+						best = Math.min(best, Math.hypot(pt.x - x, pt.y - y));
+					}
+					return best;
+				},
+				turn = function (a, b) {
+					return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+				};
+
+			assert.equal(line.tagName, "path");
+			assert.equal(feed.tagName, "path");
+
+			// The line passes through every head
+			heads.each(function () {
+				assert.isBelow(near(this), 0.75);
+			});
+
+			// No sharp corner at the middle head, or where the pipe from the valve meets the run
+			var best = Infinity, at = 0;
+			for (var d = 0; d <= length; d += 0.5) {
+				var pt = line.getPointAtLength(d),
+					dist = Math.hypot(pt.x - Number(heads[1].getAttribute("cx")), pt.y - Number(heads[1].getAttribute("cy")));
+				if (dist < best) {
+					best = dist;
+					at = d / length;
+				}
+			}
+			assert.isBelow(turn(pathDirection(line, at - 0.03), pathDirection(line, at + 0.03)), 0.6);
+			assert.isBelow(turn(pathDirection(feed, 0.99), pathDirection(line, 0.01)), 0.15);
 		});
 	});
 

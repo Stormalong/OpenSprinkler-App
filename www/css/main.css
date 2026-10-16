@@ -2236,6 +2236,7 @@ button[id^="start_1-"] {
 
 /* Supply pipe from the valve to the first head or the start of a drip line */
 .site-map-run-feed {
+	fill: none;
 	stroke: var(--run-color);
 	stroke-linecap: round;
 	filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));
