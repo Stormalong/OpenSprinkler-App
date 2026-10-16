@@ -40,6 +40,10 @@ OSApp.SiteMap.Constants = {
 	controllerImageQuality: 0.75,
 	coordScale: 10000,
 
+	// Version of the drawings text this app reads; raise it when lines gain a meaning older apps skip (2: branches),
+	// so drawings an older app cached are downloaded again
+	drawingFormat: 2,
+
 	// Base64 characters per upload request; a multiple of 4 that stays under the firmware's 8 KB body limit
 	uploadChunkChars: 6000,
 	pinSaveDelay: 500,
@@ -362,7 +366,8 @@ OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 // on this device is moved to the controller the first time, while the controller has none.
 OSApp.SiteMap.syncFromController = function( siteName, cached ) {
 	return OSApp.SiteMap.fetchRemote().then( function( remote ) {
-		var map = { pins: OSApp.SiteMap.decodePins( remote.pins ), drawings: {}, rev: remote.rev },
+		var map = { pins: OSApp.SiteMap.decodePins( remote.pins ), drawings: {}, rev: remote.rev,
+				format: OSApp.SiteMap.Constants.drawingFormat },
 			unchanged = cached.rev === remote.rev,
 			finish = function() {
 				OSApp.SiteMap.save( siteName, map, true );
@@ -372,7 +377,7 @@ OSApp.SiteMap.syncFromController = function( siteName, cached ) {
 				if ( !remote.drw ) {
 					return finish();
 				}
-				if ( unchanged && cached.drawings ) {
+				if ( unchanged && cached.drawings && cached.format === map.format ) {
 					map.drawings = cached.drawings;
 					return finish();
 				}
@@ -1063,7 +1068,8 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	function copyMap( from ) {
-		return { image: from.image, pins: $.extend( true, {}, from.pins ), drawings: $.extend( true, {}, from.drawings ), rev: from.rev };
+		return { image: from.image, pins: $.extend( true, {}, from.pins ), drawings: $.extend( true, {}, from.drawings ), rev: from.rev,
+			format: from.format };
 	}
 
 	// Starts or ends editing. Ending saves the changes made since editing started, unless discard is set,

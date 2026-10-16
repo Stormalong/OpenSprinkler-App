@@ -2465,6 +2465,26 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	it("should download drawings again when they were cached by an app that didn't know branches", function () {
+		installController({ rev: 7, pins: {}, drawings: "d,0,1000,5000,9000,5000\nD,0,5000,5000,5000,9000\n" });
+
+		// What an older app saved for the same revision: it skipped the branch line it didn't understand
+		OSApp.SiteMap.save(siteName, { pins: {}, drawings: { 0: [{ type: "drip", pts: [[0.1, 0.5], [0.9, 0.5]] }] }, rev: 7 });
+
+		return loadMap().then(function (loaded) {
+			assert.lengthOf(requestsTo("/jmd"), 1);
+			assert.lengthOf(loaded.map.drawings[0], 2);
+			assert.isTrue(loaded.map.drawings[0][1].branch);
+
+			// Cached by this app, the same revision is reused again
+			requests = [];
+			return loadMap();
+		}).then(function (loaded) {
+			assert.lengthOf(requestsTo("/jmd"), 0);
+			assert.lengthOf(loaded.map.drawings[0], 2);
+		});
+	});
+
 	it("should upload drawings in chunks and reuse them while the map is unchanged", function () {
 		var drawings = { 0: [] };
 		for (var index = 0; index < 400; index++) {
