@@ -324,6 +324,51 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should hide disabled valves and their drawings unless Show Disabled is on, following the menu", function () {
+		var disabled = sinon.stub(OSApp.Stations, "isDisabled").callsFake(function (sid) {
+				return sid === 1;
+			}),
+			previous = OSApp.Storage.getItemSync("showDisabled"),
+			toggle = function () {
+				OSApp.UIDom.showHomeMenu();
+				return waitFor(function () {
+					return $(".ui-popup-active a[href='#show-hidden']").length;
+				}).then(function () {
+					$(".ui-popup-active a[href='#show-hidden']").trigger("click");
+					return waitFor(function () {
+						return !$(".ui-popup-active").length;
+					});
+				});
+			};
+
+		OSApp.Storage.set({ showDisabled: false });
+		OSApp.SiteMap.save(siteName, {
+			image: testImage,
+			pins: { 0: { x: 0.2, y: 0.5 }, 1: { x: 0.8, y: 0.5 } },
+			drawings: { 1: [{ type: "drip", pts: [[0.7, 0.5], [0.9, 0.5]] }] }
+		});
+
+		return openHomeMap().then(function (root) {
+			assert.deepEqual(root.find(".site-map-pin").map(function () {
+				return $(this).attr("data-sids");
+			}).get(), ["0"]);
+			assert.lengthOf(root.find(".site-map-run"), 0);
+
+			// Show Disabled in the footer menu brings them back right away, and hiding them again removes them
+			return toggle().then(function () {
+				assert.lengthOf(root.find(".site-map-pin"), 2);
+				assert.lengthOf(root.find(".site-map-run"), 1);
+				return toggle();
+			}).then(function () {
+				assert.lengthOf(root.find(".site-map-pin"), 1);
+				assert.lengthOf(root.find(".site-map-run"), 0);
+			});
+		}).finally(function () {
+			disabled.restore();
+			OSApp.Storage.set({ showDisabled: previous === "true" });
+		});
+	});
+
 	it("should render stored pins at their saved positions", function (done) {
 		OSApp.SiteMap.save(siteName, {
 			image: testImage,

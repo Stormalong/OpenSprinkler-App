@@ -378,6 +378,9 @@ OSApp.UIDom.showHomeMenu = ( function() {
                                         OSApp.Storage.set( { showDisabled: true } );
                                         showHidden = true;
                                 }
+
+				// Let the site map show or hide disabled valves too
+				$( "html" ).trigger( "showdisabled" );
 			} else if ( href === "#raindelay" ) {
 				OSApp.Weather.showRainDelay();
 			} else if ( href === "#globalpause" ) {

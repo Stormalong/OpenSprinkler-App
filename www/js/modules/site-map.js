@@ -577,6 +577,11 @@ OSApp.SiteMap.getMaxZoom = function( pins, width, height, radius ) {
 	return scale === null ? Constants.maxZoomLimit : Math.max( Constants.maxZoom, scale );
 };
 
+// Disabled stations are shown only when Show Disabled is on in the footer menu, like the station cards
+OSApp.SiteMap.isStationShown = function( sid ) {
+	return OSApp.Storage.getItemSync( "showDisabled" ) === "true" || !OSApp.Stations.isDisabled( sid );
+};
+
 // Smooth curve through points ({ x, y }), as one cubic Bezier segment { from, c1, c2, to } per pair of points.
 // Each point's tangent follows the line between its neighbours, so the curve bends through it without a corner;
 // control points sit a third of the segment's length out, so a long segment beside a short one doesn't loop.
@@ -1301,14 +1306,14 @@ OSApp.SiteMap.createView = function() {
 		} );
 	}
 
-	// Pins of stations that still exist
+	// Pins of stations that still exist and aren't hidden as disabled
 	function getVisiblePins() {
 		var stationCount = getStationNames().length,
 			visible = {};
 
 		$.each( map.pins, function( sid, pos ) {
 			sid = parseInt( sid, 10 );
-			if ( !isNaN( sid ) && sid < stationCount ) {
+			if ( !isNaN( sid ) && sid < stationCount && OSApp.SiteMap.isStationShown( sid ) ) {
 				visible[ sid ] = pos;
 			}
 		} );
@@ -1433,7 +1438,7 @@ OSApp.SiteMap.createView = function() {
 
 		$.each( map.drawings, function( sid, runs ) {
 			sid = Number( sid );
-			if ( sid >= stationCount ) {
+			if ( sid >= stationCount || !OSApp.SiteMap.isStationShown( sid ) ) {
 				return;
 			}
 			var state = OSApp.SiteMap.getPinState( sid ),
@@ -1818,14 +1823,11 @@ OSApp.SiteMap.createView = function() {
 
 	function showStationPicker( pos ) {
 		var names = getStationNames(),
-
-			// Disabled stations are listed only when Show Disabled is on, like the station cards
-			showDisabled = OSApp.Storage.getItemSync( "showDisabled" ) === "true",
 			list = "",
 			sid, popup;
 
 		for ( sid = 0; sid < names.length; sid++ ) {
-			if ( Object.prototype.hasOwnProperty.call( map.pins, sid ) || ( !showDisabled && OSApp.Stations.isDisabled( sid ) ) ) {
+			if ( Object.prototype.hasOwnProperty.call( map.pins, sid ) || !OSApp.SiteMap.isStationShown( sid ) ) {
 				continue;
 			}
 			list += "<li><a href='#' data-sid='" + sid + "'>" + OSApp.Utils.htmlEscape( OSApp.Stations.getName( sid ) ) +
@@ -2361,7 +2363,7 @@ OSApp.SiteMap.createView = function() {
 		if ( pinSaveTimer ) {
 			uploadChanges();
 		}
-		$( "html" ).off( "datarefresh.sitemap" );
+		$( "html" ).off( "datarefresh.sitemap showdisabled.sitemap" );
 		$( window ).off( "resize.sitemap" );
 		$( document ).off( "keydown.sitemap" );
 		clearInterval( timeTimer );
@@ -2379,7 +2381,8 @@ OSApp.SiteMap.createView = function() {
 			return;
 		}
 		active = true;
-		$( "html" ).off( "datarefresh.sitemap" ).on( "datarefresh.sitemap", onDataRefresh );
+		$( "html" ).off( "datarefresh.sitemap" ).on( "datarefresh.sitemap", onDataRefresh )
+			.off( "showdisabled.sitemap" ).on( "showdisabled.sitemap", updatePinStates );
 		$( window ).off( "resize.sitemap" ).on( "resize.sitemap", onResize );
 		$( document ).off( "keydown.sitemap" ).on( "keydown.sitemap", onKeydown );
 		clearInterval( timeTimer );
