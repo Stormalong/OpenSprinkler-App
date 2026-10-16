@@ -1791,6 +1791,27 @@ OSApp.SiteMap.createView = function() {
 		return event.originalEvent || event;
 	}
 
+	// Taps are acted on at pointerup, but after a touch the browser also fires a click at the same spot a moment
+	// later. That click would land on whatever the tap just opened, such as an item in a station list, so drop it.
+	function ignoreFollowingClick( event ) {
+		var timer,
+			swallow = function( click ) {
+				click.preventDefault();
+				click.stopPropagation();
+				stop();
+			},
+			stop = function() {
+				clearTimeout( timer );
+				document.removeEventListener( "click", swallow, true );
+			};
+
+		if ( nativeEvent( event ).pointerType === "mouse" ) {
+			return;
+		}
+		document.addEventListener( "click", swallow, true );
+		timer = setTimeout( stop, 500 );
+	}
+
 	function capturePointer( element, event ) {
 		try {
 			element.setPointerCapture( nativeEvent( event ).pointerId );
@@ -1855,6 +1876,7 @@ OSApp.SiteMap.createView = function() {
 			// The pin may now overlap others, or have left a group
 			renderPins();
 		} else if ( event.type === "pointerup" ) {
+			ignoreFollowingClick( event );
 			if ( current.sids.length > 1 ) {
 				openGroup( current.pin );
 			} else if ( editing ) {
@@ -1938,6 +1960,7 @@ OSApp.SiteMap.createView = function() {
 		if ( current.moved ) {
 			persist( [ "drawings" ] );
 		} else if ( event.type === "pointerup" && !drawing ) {
+			ignoreFollowingClick( event );
 			showRunActions( current.sid, current.runIndex );
 		}
 	} );
@@ -1998,6 +2021,7 @@ OSApp.SiteMap.createView = function() {
 		gesture = null;
 		container.removeClass( "site-map-panning" );
 		if ( event.type === "pointerup" && current && !current.moved ) {
+			ignoreFollowingClick( event );
 			onMapTap( event, current.run );
 		}
 	} );

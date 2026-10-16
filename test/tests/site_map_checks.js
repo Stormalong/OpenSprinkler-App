@@ -284,6 +284,47 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should ignore the click a touch tap fires onto the station list it opened", function (done) {
+		var control = sinon.stub(OSApp.UIDom, "showDurationBox");
+
+		OSApp.SiteMap.save(siteName, {
+			image: testImage,
+			pins: { 0: { x: 0.5, y: 0.5 }, 1: { x: 0.5, y: 0.5 } }
+		});
+
+		showSiteMap(function (err) {
+			control.restore();
+			$(".site-map-picker").popup("close");
+			done(err);
+		}, function (page) {
+			var touch = function (type) {
+				page.find(".site-map-pin-group")[0].dispatchEvent(new PointerEvent(type, {
+					bubbles: true, cancelable: true, pointerId: 2, pointerType: "touch", isPrimary: true
+				}));
+			};
+
+			touch("pointerdown");
+			touch("pointerup");
+
+			// The browser follows a touch with a click at the same spot, which now lands on the list
+			$(".site-map-picker a[data-sid]").first()[0].click();
+			assert.isFalse(control.called);
+			assert.lengthOf($(".site-map-picker a[data-sid]"), 2);
+
+			// A real tap on the list afterwards still works
+			return new Promise(function (resolve) {
+				setTimeout(resolve, 700);
+			}).then(function () {
+				$(".site-map-picker a[data-sid]").first()[0].click();
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 600);
+				});
+			}).then(function () {
+				assert.isTrue(control.calledOnce);
+			});
+		});
+	});
+
 	it("should separate nearby pins after zooming into their group", function (done) {
 		var width;
 
