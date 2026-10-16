@@ -729,7 +729,7 @@ OSApp.SiteMap.createView = function() {
 
 	// Confirms a saved edit, like the options pages do
 	function showSaved() {
-		OSApp.Errors.showError( OSApp.Language._( "Site map has been saved" ) );
+		OSApp.Errors.showError( OSApp.Language._( "Settings have been saved" ) );
 	}
 
 	// Counts requests in flight so a data refresh doesn't reload the map while it is being saved

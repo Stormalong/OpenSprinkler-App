@@ -85,7 +85,7 @@ describe("Site Map Checks", function () {
 		// Back to the station cards, unzoomed, so the next test loads the map afresh
 		$("#sprinklers .site-map-zoom-reset").trigger("click");
 
-		// A message from this test, such as "Site map has been saved", could cover the next test's taps
+		// A message from this test, such as "Settings have been saved", could cover the next test's taps
 		clearTimeout(OSApp.uiState.errorTimeout);
 		$.mobile.loading("hide");
 		OSApp.SiteMap.setHomeView("cards");
@@ -1142,7 +1142,7 @@ describe("Site Map Checks", function () {
 		var message = sinon.stub(OSApp.Errors, "showError"),
 			saved = function () {
 				return message.getCalls().filter(function (call) {
-					return call.args[0] === "Site map has been saved";
+					return call.args[0] === "Settings have been saved";
 				}).length;
 			};
 
@@ -1727,7 +1727,7 @@ describe("Site Map Controller Storage", function () {
 				assert.isBelow(remote.pins[0][0], 3000);
 
 				// Confirmed once the controller has it
-				assert.isTrue(OSApp.Errors.showError.calledWith("Site map has been saved"));
+				assert.isTrue(OSApp.Errors.showError.calledWith("Settings have been saved"));
 			});
 		}).finally(function () {
 			OSApp.SiteMap.setHomeView("cards");
