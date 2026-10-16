@@ -520,11 +520,13 @@ OSApp.SiteMap.getSeparatingScale = function( pins, width, height, radius, maxZoo
 };
 
 // A view is { scale, x, y }: the image is drawn at scale times its fitted size, with its top-left corner offset x, y pixels
-OSApp.SiteMap.clampView = function( view, width, height, maxZoom ) {
+// overscrollRight lets the map be dragged that many pixels further left than its right edge, so whatever
+// is under the buttons along the right side can be moved out from under them, even at normal zoom
+OSApp.SiteMap.clampView = function( view, width, height, maxZoom, overscrollRight ) {
 	var scale = Math.min( maxZoom, Math.max( 1, view.scale ) );
 	return {
 		scale: scale,
-		x: Math.min( 0, Math.max( width - width * scale, view.x ) ),
+		x: Math.min( 0, Math.max( width - width * scale - ( overscrollRight || 0 ), view.x ) ),
 		y: Math.min( 0, Math.max( height - height * scale, view.y ) )
 	};
 };
@@ -846,6 +848,12 @@ OSApp.SiteMap.createView = function() {
 		return ( stations && stations.snames ) || [];
 	}
 
+	// How far past its right edge the map may be dragged: the width of the button column plus a gap
+	function getOverscroll() {
+		var controls = container.find( ".site-map-controls" );
+		return controls.is( ":visible" ) ? controls.outerWidth() + 8 : 0;
+	}
+
 	function getSize() {
 		return { width: container.width(), height: container.height() };
 	}
@@ -876,7 +884,7 @@ OSApp.SiteMap.createView = function() {
 		if ( !fromAnimation ) {
 			stopAnimation();
 		}
-		view = OSApp.SiteMap.clampView( next, size.width, size.height, Constants.maxZoom );
+		view = OSApp.SiteMap.clampView( next, size.width, size.height, Constants.maxZoom, getOverscroll() );
 		lastWidth = size.width;
 		image.css( "transform", "translate(" + view.x + "px, " + view.y + "px) scale(" + view.scale + ")" );
 		container.toggleClass( "site-map-zoomed", view.scale > 1 );

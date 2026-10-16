@@ -1809,6 +1809,13 @@ button[id^="start_1-"] {
 }
 
 /* Site map */
+/* Touch screens zoom with pinch and double-tap, so the zoom buttons are left off to keep the map clear */
+@media (pointer: coarse) {
+	.site-map-zoom {
+		display: none;
+	}
+}
+
 /* Cards / Map switch on the home page, floating just above the menu button */
 .home-view-button {
 	border: 0;

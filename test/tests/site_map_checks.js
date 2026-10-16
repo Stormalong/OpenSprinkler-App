@@ -958,6 +958,80 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should let the map be dragged clear of the buttons on the right, even at normal zoom", function () {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		return openHomeMap().then(function (page) {
+			// Put the valve right under the Edit button
+			var map = page.find(".site-map-container")[0].getBoundingClientRect(),
+				button = page.find(".site-map-edit")[0].getBoundingClientRect();
+
+			OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: {
+				x: ( button.left + button.width / 2 - map.left ) / map.width,
+				y: ( button.top + button.height / 2 - map.top ) / map.height
+			} } });
+			return openHomeMap();
+		}).then(function (page) {
+			var container = page.find(".site-map-container"),
+				controls = page.find(".site-map-controls"),
+				rect = container[0].getBoundingClientRect(),
+				image = page.find(".site-map-image-el")[0],
+				pinCenter = function () {
+					var r = page.find(".site-map-pin")[0].getBoundingClientRect();
+					return [r.left + r.width / 2, r.top + r.height / 2];
+				},
+				hit = function () {
+					return document.elementFromPoint.apply(document, pinCenter());
+				},
+				drag = function (dx) {
+					var x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+					pointer(container, "pointerdown", x, y);
+					pointer(container, "pointermove", x + dx / 2, y);
+					pointer(container, "pointermove", x + dx, y);
+					pointer(container, "pointerup", x + dx, y);
+				},
+				limit = controls.outerWidth() + 8;
+
+			// The valve starts under the button column, where a tap would hit a button
+			assert.isTrue($(hit()).closest(".site-map-controls").length > 0);
+
+			drag(-60);
+			return nextFrame().then(function () {
+				assert.isTrue($(hit()).closest(".site-map-pin").length > 0);
+
+				// Only as far as the button column is wide
+				drag(-500);
+				assert.include(image.style.transform, "translate(-" + limit + "px");
+				drag(1000);
+				assert.include(image.style.transform, "translate(0px");
+			});
+		});
+	});
+
+	it("should allow dragging past the right edge only by the given amount", function () {
+		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 1, x: -100, y: 0 }, 400, 200, 8, 40), { scale: 1, x: -40, y: 0 });
+		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 1, x: 10, y: -5 }, 400, 200, 8, 40), { scale: 1, x: 0, y: 0 });
+		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 2, x: -500, y: 0 }, 400, 200, 8, 40), { scale: 2, x: -440, y: 0 });
+	});
+
+	it("should leave the zoom buttons off on touch screens", function () {
+		var hidden = [].some.call(document.styleSheets, function (sheet) {
+			var rules;
+			try {
+				rules = sheet.cssRules;
+			} catch (error) {
+				return false;
+			}
+			return [].some.call(rules || [], function (rule) {
+				return rule.media && /pointer:\s*coarse/.test(rule.conditionText || rule.media.mediaText) &&
+					[].some.call(rule.cssRules, function (inner) {
+						return inner.selectorText === ".site-map-zoom" && inner.style.display === "none";
+					});
+			});
+		});
+		assert.isTrue(hidden);
+	});
+
 	it("should not list the site map in the menu", function () {
 		assert.lengthOf($("#sprinklers-settings a[href='#site-map']"), 0);
 	});
