@@ -793,7 +793,8 @@ OSApp.SiteMap.createView = function() {
 		var content = page.closest( ".ui-content" ),
 			img = image[ 0 ],
 			ratio = map.image && img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0,
-			bottom = ( parseFloat( content.css( "padding-bottom" ) ) || 0 ) + ( parseFloat( page.closest( ".ui-page" ).css( "padding-bottom" ) ) || 0 ),
+			bottom = ( parseFloat( content.css( "padding-bottom" ) ) || 0 ) + ( parseFloat( page.closest( ".ui-page" ).css( "padding-bottom" ) ) || 0 ) +
+				( parseFloat( page.css( "margin-bottom" ) ) || 0 ),
 			width = content.width(),
 			height = Math.max( Constants.minMapHeight, window.innerHeight - container.offset().top - bottom );
 
