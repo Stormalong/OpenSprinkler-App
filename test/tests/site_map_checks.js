@@ -2005,6 +2005,55 @@ describe("Site Map Controller Storage", function () {
 		});
 	}
 
+	it("should not mistake adding the first image for a change on another device", function () {
+		var confirm = sandbox.stub(OSApp.UIDom, "areYouSure"),
+			picture = sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(jpeg().split(",")[1]);
+			});
+
+		// A controller with no map yet: adding an image uploads it, then goes straight into editing
+		installController({ rev: 0 });
+		OSApp.SiteMap.save(siteName, { pins: {}, drawings: {}, rev: 0 });
+		return openHomeMap().then(function (page) {
+			page.find(".site-map-add-image").trigger("click");
+			return new Promise(function (resolve) {
+				setTimeout(resolve, 300);
+			}).then(function () {
+				assert.isTrue(page.hasClass("site-map-editing"));
+				assert.isNotNull(remote.image);
+
+				// Place a valve and save
+				var rect = page.find(".site-map-container")[0].getBoundingClientRect(),
+					target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2),
+					event = function (type) {
+						target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: rect.left + rect.width / 2,
+							clientY: rect.top + rect.height / 2, pointerId: 1, pointerType: "mouse", button: 0 }));
+					};
+				event("pointerdown");
+				event("pointerup");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 600);
+				});
+			}).then(function () {
+				$(".ui-popup-active .site-map-picker a[data-sid='0']").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 600);
+				});
+			}).then(function () {
+				page.find(".site-map-edit").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 300);
+				});
+			}).then(function () {
+				assert.isFalse(confirm.called);
+				assert.property(remote.pins, "0");
+			});
+		}).finally(function () {
+			picture.restore();
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
 	it("should save without asking when nobody else changed the map", function () {
 		var confirm = sandbox.stub(OSApp.UIDom, "areYouSure");
 

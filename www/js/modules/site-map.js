@@ -1587,9 +1587,11 @@ OSApp.SiteMap.createView = function() {
 			showProgress( 0 );
 			track( OSApp.SiteMap.uploadImage( dataURL, showProgress ).then( function() {
 				map.image = dataURL;
-				showImage();
+
+				// Learn the revision the upload produced before editing starts, so saving the edit doesn't
+				// mistake this upload for a change made on another device
 				return refreshRevision();
-			} ).always( function() {
+			} ).then( showImage ).always( function() {
 				$.mobile.loading( "hide" );
 			} ) );
 		}, onController ? Constants.controllerImageSize : Constants.maxImageSize,
