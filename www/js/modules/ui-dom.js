@@ -427,6 +427,10 @@ OSApp.UIDom.handleKeydown = function( e ) {
 	} else if ( ( menuOpen || altDown ) && code === 76 ) { // L
 		e.preventDefault();
 		OSApp.UIDom.changePage( "#logs" );
+	} else if ( ( menuOpen || altDown ) && code === 65 ) { // A
+		e.preventDefault();
+		OSApp.SiteMap.setHomeView( "map" );
+		OSApp.UIDom.goHome();
 	} else if ( ( menuOpen || altDown ) && code === 82 ) { // R
 		e.preventDefault();
 		OSApp.UIDom.changePage( "#runonce" );
@@ -1026,8 +1030,10 @@ OSApp.UIDom.showLoading = function( ele ) {
 	}
 };
 
-OSApp.UIDom.getPicture = function( callback ) {
+OSApp.UIDom.getPicture = function( callback, maxSize, quality ) {
 	callback = callback || function() {};
+	maxSize = maxSize || 200;
+	quality = quality || 0.5;
 	var imageLoader = $( "<input style='display: none' type='file' accept='image/*' />" )
 		.insertAfter( "body" )
 		.on( "change", function( event ) {
@@ -1036,7 +1042,6 @@ OSApp.UIDom.getPicture = function( callback ) {
 				var image = new Image();
 				image.onload = function() {
 					var canvas = document.createElement( "canvas" ),
-						maxSize = 200,
 						width = image.width,
 						height = image.height;
 					if ( width > height ) {
@@ -1053,7 +1058,7 @@ OSApp.UIDom.getPicture = function( callback ) {
 					canvas.width = width;
 					canvas.height = height;
 					canvas.getContext( "2d" ).drawImage( image, 0, 0, width, height );
-					var resizedImage = canvas.toDataURL( "image/jpeg", 0.5 ).replace( "data:image/jpeg;base64,", "" );
+					var resizedImage = canvas.toDataURL( "image/jpeg", quality ).replace( "data:image/jpeg;base64,", "" );
 					imageLoader.remove();
 					callback( resizedImage );
 				};

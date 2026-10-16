@@ -1630,6 +1630,8 @@ OSApp.Dashboard.displayPage = function() {
 				}
 			} );
 
+		OSApp.SiteMap.attachToHome( page );
+
 		$( "#sprinklers" ).remove();
 		$.mobile.pageContainer.append( page );
 
