@@ -255,6 +255,15 @@ OSApp.UIDom.launchApp = function() {
 		// Fix issues between jQuery Mobile and FastClick
 		OSApp.UIDom.fixInputClick( $newpage );
 
+		// When the fixed header and footer were hidden on the previous page (the first page after loading),
+		// jQuery Mobile sizes the page before they add their padding, so the page scrolls by their height.
+		// The padding is applied after this event, so size the page again once it is in place.
+		setTimeout( function() {
+			if ( $newpage.hasClass( $.mobile.activePageClass ) ) {
+				$.mobile.resetActivePageHeight();
+			}
+		}, 0 );
+
 		if ( OSApp.currentSession.isControllerConnected() && newpage !== "#site-control" && newpage !== "#start" && newpage !== "#loadingPage" ) {
 
 			// Update the controller status every 5 seconds and the program and station data every 30 seconds
