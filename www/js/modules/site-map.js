@@ -812,6 +812,32 @@ OSApp.SiteMap.createView = function() {
 			height = width * ratio;
 		}
 		container.css( { width: Math.floor( width ) + "px", height: Math.floor( height ) + "px" } );
+		stretchPage();
+	}
+
+	// The map's size sets the page's height, and jQuery Mobile only stretches a page to the window when it is
+	// shown, so stretch it again whenever the map is resized (otherwise the dark background shows below it)
+	function stretchPage() {
+		if ( page.closest( ".ui-page" ).hasClass( $.mobile.activePageClass ) ) {
+			$.mobile.resetActivePageHeight();
+		}
+	}
+
+	// Refits the map when anything above it changes size, such as the weather loading into the card above
+	function watchLayoutAbove() {
+		var above = page.prevAll().toArray();
+
+		if ( typeof ResizeObserver !== "function" || !above.length ) {
+			return;
+		}
+		layoutObserver = new ResizeObserver( function() {
+			if ( active ) {
+				onResize();
+			}
+		} );
+		above.forEach( function( element ) {
+			layoutObserver.observe( element );
+		} );
 	}
 
 	// Empty until the controller's data has loaded
@@ -1850,7 +1876,8 @@ OSApp.SiteMap.createView = function() {
 	} );
 
 	var active = false,
-		mapLoaded = false;
+		mapLoaded = false,
+		layoutObserver = null;
 
 	function deactivate() {
 		if ( !active ) {
@@ -1876,6 +1903,10 @@ OSApp.SiteMap.createView = function() {
 		$( "html" ).off( "datarefresh.sitemap" );
 		$( window ).off( "resize.sitemap" );
 		$( document ).off( "keydown.sitemap" );
+		if ( layoutObserver ) {
+			layoutObserver.disconnect();
+			layoutObserver = null;
+		}
 	}
 
 	function activate() {
@@ -1886,6 +1917,7 @@ OSApp.SiteMap.createView = function() {
 		$( "html" ).off( "datarefresh.sitemap" ).on( "datarefresh.sitemap", onDataRefresh );
 		$( window ).off( "resize.sitemap" ).on( "resize.sitemap", onResize );
 		$( document ).off( "keydown.sitemap" ).on( "keydown.sitemap", onKeydown );
+		watchLayoutAbove();
 		fitMap();
 		setView( view );
 

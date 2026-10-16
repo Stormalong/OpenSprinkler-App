@@ -746,6 +746,218 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	// Waits for layout work queued by a resize (ResizeObserver and animation frames) to settle
+	function settle() {
+		return new Promise(function (resolve) {
+			setTimeout(resolve, 100);
+		}).then(nextFrame);
+	}
+
+	function pageFitsWindow() {
+		var page = $("#sprinklers")[0];
+		assert.isAtMost(document.documentElement.scrollHeight, window.innerHeight + 1, "the page scrolls");
+		assert.isAtLeast(page.offsetHeight, window.innerHeight - 1, "the page doesn't reach the bottom of the window");
+	}
+
+	it("should fill the window without scrolling in map view", function () {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+		return openHomeMap().then(settle).then(pageFitsWindow);
+	});
+
+	it("should stretch the page to the window again when switching from the cards to the map", function () {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		return openHomeMap().then(function () {
+			// Make the card view taller than the window, so jQuery Mobile drops its minimum height
+			$("#os-stations-list").append("<div class='layout-test-filler' style='height:2000px'></div>");
+			OSApp.SiteMap.setHomeView("cards");
+			$.mobile.resetActivePageHeight();
+			OSApp.SiteMap.setHomeView("map");
+			return settle();
+		}).then(pageFitsWindow).finally(function () {
+			$(".layout-test-filler").remove();
+		});
+	});
+
+	// A wide image, so the map is limited by the window's width and ends above the bottom of the window,
+	// like a square photo on a phone
+	function wideImage() {
+		var canvas = document.createElement("canvas");
+		canvas.width = 400;
+		canvas.height = 80;
+		canvas.getContext("2d").fillRect(0, 0, 400, 80);
+		return canvas.toDataURL("image/jpeg");
+	}
+
+	it("should stretch the page again when the map is refitted smaller", function () {
+		OSApp.SiteMap.save(siteName, { image: wideImage(), pins: {} });
+
+		return openHomeMap().then(function (root) {
+			// Like opening straight into map view: the page height is set while the map is still taller
+			// than the window, then the map is fitted to the screen
+			root.find(".site-map-container").css("height", "2000px");
+			$.mobile.resetActivePageHeight();
+			assert.equal($("#sprinklers")[0].style.minHeight, "");
+
+			$("#sprinklers .info-card").first().hide().show();
+			$(window).trigger("resize.sitemap");
+			return settle();
+		}).then(function () {
+			var root = $("#sprinklers .site-map-view"),
+				mapBottom = root.find(".site-map-container")[0].getBoundingClientRect().bottom;
+
+			// The map really is shorter than the window here, so only the page's minimum height fills the gap
+			assert.isBelow(mapBottom, window.innerHeight - 50);
+			pageFitsWindow();
+		});
+	});
+
+	it("should refit the map when the content above it changes size", function () {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		return openHomeMap().then(function (root) {
+			var card = $("#sprinklers .info-card").first(),
+				before = root.find(".site-map-container").height(),
+				cardHeight = card.outerHeight(true);
+
+			// Like the weather loading into the card above the map after the map was first sized,
+			// but in reverse: the room above shrinks, so the map can grow into it
+			card.hide();
+			return settle().then(function () {
+				assert.isAbove(root.find(".site-map-container").height(), before + cardHeight / 2);
+				pageFitsWindow();
+
+				card.show();
+				return settle();
+			}).then(function () {
+				assert.closeTo(root.find(".site-map-container").height(), before, 1);
+				pageFitsWindow();
+			});
+		}).finally(function () {
+			$("#sprinklers .info-card").first().show();
+		});
+	});
+
+	it("should restore an existing run when adding points is cancelled", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: { 1: [{ type: "drip", pts: [[0.1, 0.6], [0.4, 0.6]] }] } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tapMap(page, 0.25, 0.6);
+			return chooseAction("Add points").then(function () {
+				tapMap(page, 0.6, 0.8);
+				tapMap(page, 0.7, 0.8);
+				page.find(".site-map-draw-cancel").trigger("click");
+				assert.isFalse(page.hasClass("site-map-drawing-mode"));
+				assert.lengthOf(page.find(".site-map-run-drip .site-map-handle"), 2);
+				return storedMap();
+			}).then(function (map) {
+				assert.deepEqual(map.drawings, { 1: [{ type: "drip", pts: [[0.1, 0.6], [0.4, 0.6]] }] });
+				page.find(".site-map-edit").trigger("click");
+			});
+		});
+	});
+
+	it("should discard a new run when drawing is cancelled", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 2: { x: 0.3, y: 0.6 } } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tap(page.find(".site-map-pin"));
+			return chooseAction("Add heads").then(function () {
+				tapMap(page, 0.4, 0.6);
+				tapMap(page, 0.5, 0.6);
+				assert.lengthOf(page.find(".site-map-head"), 2);
+				page.find(".site-map-draw-cancel").trigger("click");
+				assert.lengthOf(page.find(".site-map-run"), 0);
+				return storedMap();
+			}).then(function (map) {
+				assert.deepEqual(map.drawings, {});
+				page.find(".site-map-edit").trigger("click");
+			});
+		});
+	});
+
+	it("should remove the last point of a run", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: { 1: [{ type: "drip", pts: [[0.1, 0.6], [0.4, 0.6], [0.4, 0.8]] }] } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tapMap(page, 0.25, 0.6);
+			return chooseAction("Remove last point").then(storedMap).then(function (map) {
+				assert.deepEqual(map.drawings[1][0].pts, [[0.1, 0.6], [0.4, 0.6]]);
+
+				// A drip line can't go below two points, so the action is no longer offered
+				tapMap(page, 0.25, 0.6);
+				return waitFor(function () {
+					return $(".ui-popup-active .site-map-picker a").length > 0;
+				});
+			}).then(function () {
+				var labels = $(".ui-popup-active .site-map-picker a").map(function () {
+					return $(this).text();
+				}).get();
+				assert.notInclude(labels, "Remove last point");
+				return chooseAction("Add points");
+			}).then(function () {
+				page.find(".site-map-draw-cancel").trigger("click");
+				page.find(".site-map-edit").trigger("click");
+			});
+		});
+	});
+
+	function scaleOf(page) {
+		var match = page.find(".site-map-image-el")[0].style.transform.match(/scale\(([\d.]+)\)/);
+		return match ? Number(match[1]) : 1;
+	}
+
+	it("should stop a zoom animation when the map is dragged", function () {
+		OSApp.SiteMap.Constants.zoomDuration = 300;
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		return openHomeMap().then(function (page) {
+			var container = page.find(".site-map-container"),
+				rect = container[0].getBoundingClientRect(),
+				x = rect.left + rect.width / 2,
+				y = rect.top + rect.height / 2;
+
+			page.find(".site-map-zoom-in").trigger("click");
+			return new Promise(function (resolve) {
+				setTimeout(resolve, 60);
+			}).then(function () {
+				var midway = scaleOf(page);
+
+				pointer(container, "pointerdown", x, y);
+				pointer(container, "pointermove", x - 30, y - 20);
+				pointer(container, "pointerup", x - 30, y - 20);
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 400);
+				}).then(function () {
+					assert.isBelow(scaleOf(page), 2);
+					assert.closeTo(scaleOf(page), midway, 0.15);
+				});
+			});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.zoomDuration = 0;
+		});
+	});
+
+	it("should zoom without animating when reduced motion is requested", function () {
+		var matchMedia = sinon.stub(window, "matchMedia").callsFake(function (query) {
+			return { matches: /prefers-reduced-motion/.test(query), media: query, addListener: function () {}, removeListener: function () {} };
+		});
+
+		OSApp.SiteMap.Constants.zoomDuration = 300;
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		return openHomeMap().then(function (page) {
+			page.find(".site-map-zoom-in").trigger("click");
+			assert.equal(scaleOf(page), 2);
+		}).finally(function () {
+			matchMedia.restore();
+			OSApp.SiteMap.Constants.zoomDuration = 0;
+		});
+	});
+
 	it("should not list the site map in the menu", function () {
 		assert.lengthOf($("#sprinklers-settings a[href='#site-map']"), 0);
 	});
