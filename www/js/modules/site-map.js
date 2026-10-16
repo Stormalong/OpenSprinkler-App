@@ -565,6 +565,11 @@ OSApp.SiteMap.attachToHome = function( page ) {
 			} else {
 				view.deactivate();
 			}
+
+			// The page's height changes with the view, so stretch it to the window again
+			if ( shown && page.hasClass( $.mobile.activePageClass ) ) {
+				$.mobile.resetActivePageHeight();
+			}
 		};
 
 	page.find( ".info-card" ).first().after( view.root );
