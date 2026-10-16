@@ -186,7 +186,7 @@ OSApp.ImportExport.showExportMethods = function( siteMap ) {
 
 			// Out of storage space: keep the backup without the site map image
 			OSApp.Storage.set( { "backup": OSApp.ImportExport.serializeConfig( emailSiteMap ) }, function() {
-				OSApp.Errors.showError( OSApp.Language._( "Backup saved on this device without the site map image" ) );
+				OSApp.Errors.showError( OSApp.Language._( "Backup saved on this device" ) );
 			} );
 		}
 	} );

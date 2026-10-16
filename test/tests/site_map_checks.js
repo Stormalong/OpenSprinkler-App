@@ -600,7 +600,7 @@ describe("Site Map Checks", function () {
 				// Tapping the middle of the moved line opens its actions
 				page.find(".site-map-edit").trigger("click");
 				tapMap(page, 0.3, 0.25);
-				return chooseAction("Add points");
+				return chooseAction("Add");
 			}).then(function () {
 				tapMap(page, 0.7, 0.7);
 				page.find(".site-map-draw-done").trigger("click");
@@ -642,13 +642,12 @@ describe("Site Map Checks", function () {
 			done(err);
 		}, function (page) {
 			confirm = sinon.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes) {
-				assert.include(detail, "1 head runs");
-				assert.include(detail, "1 drip lines");
+				assert.include(question, OSApp.Stations.getName(0));
 				yes();
 			});
 			page.find(".site-map-edit").trigger("click");
 			tap(page.find(".site-map-pin"));
-			return chooseAction("Remove from map").then(function () {
+			return chooseAction("Delete").then(function () {
 				assert.lengthOf(page.find(".site-map-run"), 0);
 				return doneEditing(page);
 			}).then(function (map) {
@@ -854,7 +853,7 @@ describe("Site Map Checks", function () {
 		showSiteMap(done, function (page) {
 			page.find(".site-map-edit").trigger("click");
 			tapMap(page, 0.25, 0.6);
-			return chooseAction("Add points").then(function () {
+			return chooseAction("Add").then(function () {
 				tapMap(page, 0.6, 0.8);
 				tapMap(page, 0.7, 0.8);
 				page.find(".site-map-draw-cancel").trigger("click");
@@ -894,7 +893,7 @@ describe("Site Map Checks", function () {
 		showSiteMap(done, function (page) {
 			page.find(".site-map-edit").trigger("click");
 			tapMap(page, 0.25, 0.6);
-			return chooseAction("Remove last point").then(function () {
+			return chooseAction("Undo point").then(function () {
 				return doneEditing(page);
 			}).then(function (map) {
 				assert.deepEqual(map.drawings[1][0].pts, [[0.1, 0.6], [0.4, 0.6]]);
@@ -909,8 +908,8 @@ describe("Site Map Checks", function () {
 				var labels = $(".ui-popup-active .site-map-picker a").map(function () {
 					return $(this).text();
 				}).get();
-				assert.notInclude(labels, "Remove last point");
-				return chooseAction("Add points");
+				assert.notInclude(labels, "Undo point");
+				return chooseAction("Add");
 			}).then(function () {
 				page.find(".site-map-draw-cancel").trigger("click");
 				page.find(".site-map-edit").trigger("click");
@@ -1112,7 +1111,7 @@ describe("Site Map Checks", function () {
 			pointer(container, "pointermove", rect.left + 0.9 * rect.width, rect.top + 0.9 * rect.height);
 			pointer(container, "pointerup", rect.left + 0.9 * rect.width, rect.top + 0.9 * rect.height);
 			tap(page.find(".site-map-pin[data-sids='1']"));
-			return chooseAction("Remove from map").then(function () {
+			return chooseAction("Delete").then(function () {
 				confirm.restore();
 				tap(page.find(".site-map-pin[data-sids='0']"));
 				return chooseAction("Add heads");
@@ -1207,7 +1206,7 @@ describe("Site Map Checks", function () {
 			assert.isTrue(edit.hasClass("ui-icon-edit") && !edit.hasClass("green"));
 			edit.trigger("click");
 			assert.isTrue(edit.hasClass("ui-icon-check") && edit.hasClass("green"));
-			assert.equal(edit.attr("title"), "Save changes");
+			assert.equal(edit.attr("title"), "Done");
 			assert.isTrue(page.find(".site-map-cancel").is(".ui-icon-delete.red"));
 			assert.isTrue(page.find(".site-map-clear").hasClass("ui-icon-back"));
 			assert.isFalse(page.find(".site-map-clear").hasClass("red"));
@@ -1486,7 +1485,7 @@ describe("Site Map Controller Storage", function () {
 			assert.deepEqual(remote.pins, { 0: [5000, 2500] });
 			assert.isAbove(requestsTo("/um").length, 0);
 			assert.equal(first.map.rev, remote.rev);
-			assert.isTrue(OSApp.Errors.showError.calledWith("Site map saved to the controller"));
+			assert.isTrue(OSApp.Errors.showError.calledWith("Settings have been saved"));
 
 			requests = [];
 			return loadMap();

@@ -2774,3 +2774,48 @@ msgstr ""
 
 msgid "This controller is using a default or empty device password. Change it to protect access."
 msgstr ""
+
+msgid "Add a photo or drawing of your property, then place your stations on it to see and control them from the map."
+msgstr ""
+
+msgid "Add drip line"
+msgstr ""
+
+msgid "Add heads"
+msgstr ""
+
+msgid "All stations have already been placed on the map."
+msgstr ""
+
+msgid "Are you sure you want to clear the site map?"
+msgstr ""
+
+msgid "Email backups don't include the site map image."
+msgstr ""
+
+msgid "Move valve"
+msgstr ""
+
+msgid "No stations have been placed. Tap Edit to add stations to the map."
+msgstr ""
+
+msgid "Site Map"
+msgstr ""
+
+msgid "Tap to add a valve. Tap a valve to draw its heads or drip lines."
+msgstr ""
+
+msgid "Unable to import configuration."
+msgstr ""
+
+msgid "Unable to save site map. The image may be too large."
+msgstr ""
+
+msgid "Undo point"
+msgstr ""
+
+msgid "Zoom In"
+msgstr ""
+
+msgid "Zoom Out"
+msgstr ""

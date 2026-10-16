@@ -338,7 +338,7 @@ OSApp.SiteMap.syncFromController = function( siteName, cached ) {
 
 		if ( remote.rev === 0 && cached.rev === undefined && OSApp.SiteMap.hasData( cached ) ) {
 			return OSApp.SiteMap.uploadMap( siteName, cached ).then( function( uploaded ) {
-				OSApp.Errors.showError( OSApp.Language._( "Site map saved to the controller" ) );
+				OSApp.Errors.showError( OSApp.Language._( "Settings have been saved" ) );
 				return uploaded;
 			} );
 		}
@@ -407,7 +407,7 @@ OSApp.SiteMap.restoreBackupData = function( backup, done ) {
 			return;
 		}
 		OSApp.SiteMap.uploadMap( siteName, map ).then( done, function() {
-			OSApp.Errors.showError( OSApp.Language._( "Unable to restore the site map" ) );
+			OSApp.Errors.showError( OSApp.Language._( "Unable to import configuration." ) );
 			done();
 		} );
 	} );
@@ -430,7 +430,7 @@ OSApp.SiteMap.loadMap = function( siteName, callback ) {
 				callback( cached, "local" );
 				return;
 			}
-			OSApp.Errors.showError( OSApp.Language._( "Unable to load the site map from the controller" ) );
+			OSApp.Errors.showError( OSApp.Language._( "Network Error" ) );
 			callback( cached, "controller" );
 		} );
 	} );
@@ -556,7 +556,7 @@ OSApp.SiteMap.attachToHome = function( page ) {
 		shown = false,
 		apply = function() {
 			var mode = OSApp.SiteMap.getHomeView(),
-				label = mode === "map" ? OSApp.Language._( "Show station cards" ) : OSApp.Language._( "Show site map" );
+				label = mode === "map" ? OSApp.Language._( "Stations" ) : OSApp.Language._( "Site Map" );
 
 			toggle.toggleClass( "ui-icon-bullets", mode === "map" )
 				.toggleClass( "ui-icon-location", mode !== "map" )
@@ -629,16 +629,16 @@ OSApp.SiteMap.createView = function() {
 						<a href="#" title="${OSApp.Language._( "Cancel" )}" class="site-map-draw-cancel ui-btn ui-btn-icon-notext ui-icon-delete ui-corner-all ui-mini">${OSApp.Language._( "Cancel" )}</a>
 					</div>
 					<p class="site-map-hint center"></p>
-					<p class="site-map-loading-text center">${OSApp.Language._( "Loading map..." )}</p>
+					<p class="site-map-loading-text center">${OSApp.Language._( "Loading" )}...</p>
 					<div class="site-map-empty-prompt center">
 						<p>${OSApp.Language._( "Add a photo or drawing of your property, then place your stations on it to see and control them from the map." )}</p>
-						<a href="#" class="site-map-add-image ui-btn ui-btn-inline ui-btn-icon-left ui-icon-camera ui-corner-all">${OSApp.Language._( "Add Image" )}</a>
+						<a href="#" class="site-map-add-image ui-btn ui-btn-inline ui-btn-icon-left ui-icon-camera ui-corner-all">${OSApp.Language._( "Add" )}</a>
 					</div>
 					<div class="site-map-controls">
 						<div class="site-map-toolbar">
 							<a href="#" title="${OSApp.Language._( "Edit" )}" class="site-map-edit ui-btn ui-btn-icon-notext ui-icon-edit ui-corner-all ui-mini">${OSApp.Language._( "Edit" )}</a>
-							<a href="#" title="${OSApp.Language._( "Cancel changes" )}" class="site-map-cancel ui-btn ui-btn-icon-notext ui-icon-delete ui-corner-all ui-mini red">${OSApp.Language._( "Cancel changes" )}</a>
-							<a href="#" title="${OSApp.Language._( "Set Image" )}" class="site-map-image ui-btn ui-btn-icon-notext ui-icon-camera ui-corner-all ui-mini">${OSApp.Language._( "Set Image" )}</a>
+							<a href="#" title="${OSApp.Language._( "Cancel" )}" class="site-map-cancel ui-btn ui-btn-icon-notext ui-icon-delete ui-corner-all ui-mini red">${OSApp.Language._( "Cancel" )}</a>
+							<a href="#" title="${OSApp.Language._( "Image" )}" class="site-map-image ui-btn ui-btn-icon-notext ui-icon-camera ui-corner-all ui-mini">${OSApp.Language._( "Image" )}</a>
 							<a href="#" title="${OSApp.Language._( "Clear" )}" class="site-map-clear ui-btn ui-btn-icon-notext ui-icon-back ui-corner-all ui-mini">${OSApp.Language._( "Clear" )}</a>
 						</div>
 						<div class="site-map-zoom">
@@ -814,7 +814,7 @@ OSApp.SiteMap.createView = function() {
 
 	function showUploadProgress( fraction ) {
 		$.mobile.loading( "show", {
-			text: OSApp.Language._( "Uploading map" ) + " " + Math.round( fraction * 100 ) + "%",
+			text: OSApp.Language._( "Loading" ) + " " + Math.round( fraction * 100 ) + "%",
 			textVisible: true
 		} );
 	}
@@ -845,8 +845,8 @@ OSApp.SiteMap.createView = function() {
 		page.find( ".site-map-edit" )
 			.toggleClass( "ui-icon-edit", !editing )
 			.toggleClass( "ui-icon-check green", editing )
-			.attr( "title", editing ? OSApp.Language._( "Save changes" ) : OSApp.Language._( "Edit" ) )
-			.text( editing ? OSApp.Language._( "Save changes" ) : OSApp.Language._( "Edit" ) );
+			.attr( "title", editing ? OSApp.Language._( "Done" ) : OSApp.Language._( "Edit" ) )
+			.text( editing ? OSApp.Language._( "Done" ) : OSApp.Language._( "Edit" ) );
 
 		// Redraw to show or hide the point handles
 		renderPins();
@@ -860,10 +860,10 @@ OSApp.SiteMap.createView = function() {
 			text = "";
 		} else if ( drawing ) {
 			text = drawing.run.type === "heads" ?
-				OSApp.Language._( "Tap to add heads for" ) + " " + OSApp.Stations.getName( drawing.sid ) :
-				OSApp.Language._( "Tap to draw the drip line for" ) + " " + OSApp.Stations.getName( drawing.sid );
+				OSApp.Language._( "Add heads" ) + ": " + OSApp.Stations.getName( drawing.sid ) :
+				OSApp.Language._( "Add drip line" ) + ": " + OSApp.Stations.getName( drawing.sid );
 		} else if ( placingSid !== null ) {
-			text = OSApp.Language._( "Tap the map to place" ) + " " + OSApp.Stations.getName( placingSid );
+			text = OSApp.Language._( "Move valve" ) + ": " + OSApp.Stations.getName( placingSid );
 		} else if ( editing ) {
 			text = OSApp.Language._( "Tap to add a valve. Tap a valve to draw its heads or drip lines." );
 		} else if ( $.isEmptyObject( map.pins ) ) {
@@ -1247,7 +1247,7 @@ OSApp.SiteMap.createView = function() {
 			} ).join( "" ),
 			popup = $( "<div data-role='popup' data-theme='a' class='site-map-picker'>" +
 				"<ul data-role='listview' data-inset='true' data-corners='false'>" +
-					"<li data-role='list-divider'>" + OSApp.Language._( "Select Station" ) + "</li>" +
+					"<li data-role='list-divider'>" + OSApp.Language._( "Stations" ) + "</li>" +
 					list +
 				"</ul>" +
 			"</div>" );
@@ -1304,7 +1304,7 @@ OSApp.SiteMap.createView = function() {
 				placingSid = sid;
 				updateHint();
 			} },
-			{ label: OSApp.Language._( "Remove from map" ), icon: "delete", action: function() {
+			{ label: OSApp.Language._( "Delete" ), icon: "delete", action: function() {
 				removePin( sid );
 			} }
 		] );
@@ -1314,19 +1314,19 @@ OSApp.SiteMap.createView = function() {
 		var run = map.drawings[ sid ][ runIndex ],
 			min = OSApp.SiteMap.minRunPoints[ run.type ],
 			items = [
-				{ label: OSApp.Language._( "Add points" ), icon: "plus", action: function() {
+				{ label: OSApp.Language._( "Add" ), icon: "plus", action: function() {
 					startDrawing( sid, run.type, run );
 				} }
 			];
 
 		if ( run.pts.length > min ) {
-			items.push( { label: OSApp.Language._( "Remove last point" ), icon: "back", action: function() {
+			items.push( { label: OSApp.Language._( "Undo point" ), icon: "back", action: function() {
 				run.pts.pop();
 				persist( [ "drawings" ] );
 				renderPins();
 			} } );
 		}
-		items.push( { label: run.type === "heads" ? OSApp.Language._( "Delete heads" ) : OSApp.Language._( "Delete drip line" ),
+		items.push( { label: run.type === "heads" ? OSApp.Language._( "Delete" ) : OSApp.Language._( "Delete" ),
 			icon: "delete", action: function() {
 				removeRun( sid, run );
 				persist( [ "drawings" ] );
@@ -1355,7 +1355,7 @@ OSApp.SiteMap.createView = function() {
 			return pt.slice();
 		} ) };
 		drawbar.find( ".site-map-drawbar-label" ).text(
-			( type === "heads" ? OSApp.Language._( "Heads" ) : OSApp.Language._( "Drip line" ) ) + ": " + OSApp.Stations.getName( sid ) );
+			( type === "heads" ? OSApp.Language._( "Add heads" ) : OSApp.Language._( "Add drip line" ) ) + ": " + OSApp.Stations.getName( sid ) );
 		page.addClass( "site-map-drawing-mode" );
 		renderPins();
 	}
@@ -1453,8 +1453,7 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	function clearMap() {
-		OSApp.UIDom.areYouSure( OSApp.Language._( "Are you sure you want to clear the site map?" ),
-			OSApp.Language._( "The image and all station placements will be removed." ), function() {
+		OSApp.UIDom.areYouSure( OSApp.Language._( "Are you sure you want to clear the site map?" ), "", function() {
 				var clearLocal = function() {
 					clearTimeout( pinSaveTimer );
 					pinSaveTimer = null;
@@ -1498,7 +1497,7 @@ OSApp.SiteMap.createView = function() {
 
 		popup = $( "<div data-role='popup' data-theme='a' class='site-map-picker'>" +
 			"<ul data-role='listview' data-inset='true' data-corners='false'>" +
-				"<li data-role='list-divider'>" + OSApp.Language._( "Select Station" ) + "</li>" +
+				"<li data-role='list-divider'>" + OSApp.Language._( "Stations" ) + "</li>" +
 				list +
 			"</ul>" +
 		"</div>" );
@@ -1516,22 +1515,13 @@ OSApp.SiteMap.createView = function() {
 
 	// Removes a valve and everything drawn for it
 	function removePin( sid ) {
-		var runs = map.drawings[ sid ] || [],
-			heads = runs.filter( function( run ) {
-				return run.type === "heads";
-			} ).length,
-			drip = runs.length - heads,
-			detail = OSApp.Utils.htmlEscape( OSApp.Stations.getName( sid ) );
+		var hasDrawings = !!( map.drawings[ sid ] || [] ).length;
 
-		if ( runs.length ) {
-			detail += "<br>" + OSApp.Language._( "This also deletes its drawings:" ) + " " +
-				[ heads ? heads + " " + OSApp.Language._( "head runs" ) : "", drip ? drip + " " + OSApp.Language._( "drip lines" ) : "" ]
-					.filter( Boolean ).join( ", " );
-		}
-		OSApp.UIDom.areYouSure( OSApp.Language._( "Remove this station from the map?" ), detail, function() {
+		OSApp.UIDom.areYouSure( OSApp.Language._( "Are you sure you want to delete " ) +
+			OSApp.Utils.htmlEscape( OSApp.Stations.getName( sid ) ) + "?", "", function() {
 			delete map.pins[ sid ];
 			delete map.drawings[ sid ];
-			persist( runs.length ? [ "pins", "drawings" ] : [ "pins" ] );
+			persist( hasDrawings ? [ "pins", "drawings" ] : [ "pins" ] );
 			renderPins();
 		} );
 	}
@@ -1542,7 +1532,7 @@ OSApp.SiteMap.createView = function() {
 
 		if ( !OSApp.Firmware.checkOSVersion( 210 ) || OSApp.Stations.isMaster( sid ) || OSApp.Stations.isDisabled( sid ) ||
 			OSApp.Bundles.isDerivedOnly( sid ) ) {
-			OSApp.Errors.showError( OSApp.Language._( "This station cannot be controlled from the site map" ) );
+			OSApp.Errors.showError( OSApp.Language._( "Operation not permitted." ) );
 			return;
 		}
 
