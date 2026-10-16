@@ -1736,6 +1736,11 @@ OSApp.SiteMap.createView = function() {
 		}
 	} );
 
+	// Swiping sideways on the map pans it, so don't let the swipe also open the side menu or notifications
+	container.on( "swiperight swipeleft", function( event ) {
+		event.stopImmediatePropagation();
+	} );
+
 	// Double-click or double-tap zooms in; skipped while editing, where a click places a station
 	container.on( "dblclick", function( event ) {
 		var e = nativeEvent( event ),

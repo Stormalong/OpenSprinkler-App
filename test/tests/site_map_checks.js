@@ -1008,6 +1008,28 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should not open the side menu or notifications when swiping on the map", function () {
+		var swipes = [],
+
+			// Stands in for the app's page-level handler that opens the menu or notifications on a swipe
+			pageSwipe = function (event) {
+				swipes.push(event.type);
+			};
+
+		$.mobile.document.on("swiperight.sitemaptest swipeleft.sitemaptest", ".ui-page", pageSwipe);
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+		return openHomeMap().then(function (page) {
+			page.find(".site-map-container").trigger("swiperight").trigger("swipeleft");
+			assert.deepEqual(swipes, []);
+
+			// Swiping elsewhere on the home page still reaches it
+			$("#sprinklers .info-card").trigger("swiperight");
+			assert.deepEqual(swipes, ["swiperight"]);
+		}).finally(function () {
+			$.mobile.document.off(".sitemaptest");
+		});
+	});
+
 	it("should allow dragging past the right edge only by the given amount", function () {
 		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 1, x: -100, y: 0 }, 400, 200, 8, 40), { scale: 1, x: -40, y: 0 });
 		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 1, x: 10, y: -5 }, 400, 200, 8, 40), { scale: 1, x: 0, y: 0 });
