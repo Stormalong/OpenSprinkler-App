@@ -278,6 +278,52 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should leave disabled stations out of the list for placing a valve unless Show Disabled is on", function () {
+		var disabled = sinon.stub(OSApp.Stations, "isDisabled").callsFake(function (sid) {
+				return sid === 1;
+			}),
+			previous = OSApp.Storage.getItemSync("showDisabled"),
+			listed = function (root) {
+				var rect = root.find(".site-map-container")[0].getBoundingClientRect();
+
+				root.find(".site-map-edit").trigger("click");
+				pointer(root.find(".site-map-container"), "pointerdown", rect.left + rect.width / 2, rect.top + rect.height / 2);
+				pointer(root.find(".site-map-container"), "pointerup", rect.left + rect.width / 2, rect.top + rect.height / 2);
+				return waitFor(function () {
+					return $(".site-map-picker a[data-sid]").length;
+				}).then(function () {
+					var sids = $(".site-map-picker a[data-sid]").map(function () {
+						return Number($(this).attr("data-sid"));
+					}).get();
+
+					$(".site-map-picker").popup("close");
+					root.find(".site-map-cancel").trigger("click");
+					return waitFor(function () {
+						return !$(".ui-popup-active").length;
+					}).then(function () {
+						return sids;
+					});
+				});
+			};
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+		OSApp.Storage.set({ showDisabled: false });
+
+		return openHomeMap().then(function (root) {
+			return listed(root).then(function (sids) {
+				assert.notInclude(sids, 1);
+				assert.include(sids, 0);
+				OSApp.Storage.set({ showDisabled: true });
+				return listed(root);
+			});
+		}).then(function (sids) {
+			assert.include(sids, 1);
+		}).finally(function () {
+			disabled.restore();
+			OSApp.Storage.set({ showDisabled: previous === "true" });
+		});
+	});
+
 	it("should render stored pins at their saved positions", function (done) {
 		OSApp.SiteMap.save(siteName, {
 			image: testImage,
@@ -1897,6 +1943,11 @@ describe("Site Map Controller Storage", function () {
 			var path = dest.split("?")[0],
 				params = query(dest);
 			requests.push({ path: path, params: params, body: options && options.body });
+			if (remote.fail && remote.fail[path]) {
+				remote.fail[path]--;
+				return $.Deferred().reject({ status: 0, statusText: "error" }).promise();
+			}
+			var data = options && options.body !== undefined ? options.body : params.get("d");
 
 			if (path === "/jm") {
 				return resolved({
@@ -1915,7 +1966,7 @@ describe("Site Map Controller Storage", function () {
 				return resolved(new Blob([bytes], { type: "image/jpeg" }));
 			}
 			if (path === "/cmp") {
-				var text = options.body || params.get("p") || "";
+				var text = ( options && options.body ) || params.get("p") || "";
 				remote.pins = {};
 				text.split(";").filter(Boolean).forEach(function (pin) {
 					var parts = pin.split(",").map(Number);
@@ -1926,7 +1977,7 @@ describe("Site Map Controller Storage", function () {
 			}
 			if (path === "/um") {
 				if (Number(params.get("off")) === 0) remote.upload = "";
-				remote.upload += options.body;
+				remote.upload += data;
 				if (atob(remote.upload).length === Number(params.get("tot"))) {
 					remote.image = "data:image/jpeg;base64," + remote.upload;
 					remote.rev++;
@@ -1940,7 +1991,7 @@ describe("Site Map Controller Storage", function () {
 					return resolved({ result: 1 });
 				}
 				if (Number(params.get("off")) === 0) remote.drawingUpload = "";
-				remote.drawingUpload += options.body;
+				remote.drawingUpload += data;
 				if (remote.drawingUpload.length === Number(params.get("tot"))) {
 					remote.drawings = remote.drawingUpload;
 					remote.rev++;
@@ -2191,6 +2242,61 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	// OpenThings Cloud doesn't pass on POST requests that have a body, so through it the data goes in the URL
+	it("should send map uploads in the URL when connected through OpenThings Cloud", function () {
+		var image = jpeg(),
+			pins = { 0: { x: 0.25, y: 0.5 }, 2: { x: 0.75, y: 0.5 } },
+			drawings = { 0: [] },
+			token = OSApp.currentSession.token,
+			uploads = function () {
+				return requests.filter(function (request) {
+					return ["/cmp", "/um", "/umd"].indexOf(request.path) !== -1;
+				});
+			};
+
+		for (var index = 0; index < 300; index++) {
+			drawings[0].push({ type: "drip", pts: [[index / 300, 0.5], [index / 300, 0.6]] });
+		}
+		OSApp.currentSession.token = "OT0123456789abcdef0123456789abcd";
+		installController();
+
+		return asNative(OSApp.SiteMap.uploadPins(pins)).then(function () {
+			return asNative(OSApp.SiteMap.uploadDrawings(drawings));
+		}).then(function () {
+			return asNative(OSApp.SiteMap.uploadImage(image));
+		}).then(function () {
+			return asNative(OSApp.SiteMap.uploadPins({}));
+		}).then(function () {
+			assert.isAbove(requestsTo("/umd").length, 1);
+			uploads().forEach(function (request) {
+				assert.isUndefined(request.body, request.path + " has no body");
+				assert.isTrue(request.params.has(request.path === "/cmp" ? "p" : "d"), request.path + " carries its data in the URL");
+			});
+			assert.equal(remote.drawings, OSApp.SiteMap.encodeDrawings(drawings));
+			assert.equal(remote.image, "data:image/jpeg;base64," + image.split(",")[1]);
+			assert.deepEqual(remote.pins, {});
+			assert.equal(requestsTo("/cmp")[0].params.get("p"), OSApp.SiteMap.encodePins(pins));
+		}).finally(function () {
+			OSApp.currentSession.token = token;
+		});
+	});
+
+	it("should keep sending map uploads as request bodies on a direct connection", function () {
+		var token = OSApp.currentSession.token;
+
+		OSApp.currentSession.token = "";
+		installController();
+		return asNative(OSApp.SiteMap.uploadPins({ 0: { x: 0.5, y: 0.5 } })).then(function () {
+			return asNative(OSApp.SiteMap.uploadDrawings({ 0: [{ type: "heads", pts: [[0.5, 0.5]] }] }));
+		}).then(function () {
+			assert.equal(requestsTo("/cmp")[0].body, "0,5000,5000");
+			assert.equal(requestsTo("/umd")[0].body, "h,0,5000,5000\n");
+			assert.isFalse(requestsTo("/umd")[0].params.has("d"));
+		}).finally(function () {
+			OSApp.currentSession.token = token;
+		});
+	});
+
 	it("should clear drawings on the controller with tot=0", function () {
 		installController({ rev: 2, drawings: "d,0,1,1,2,2\n" });
 
@@ -2258,6 +2364,139 @@ describe("Site Map Controller Storage", function () {
 					}, 600);
 				}, 600);
 			}, 300);
+		});
+	});
+
+	// Deletes the valve for sid in edit mode and saves, on the map shown on the home page
+	function deleteValve(sid) {
+		var page = $("#sprinklers .site-map-view"),
+			wait = function (check) {
+				return new Promise(function (resolve, reject) {
+					var started = Date.now();
+					(function poll() {
+						if (check()) {
+							resolve();
+						} else if (Date.now() - started > 3000) {
+							reject(new Error("timed out"));
+						} else {
+							setTimeout(poll, 20);
+						}
+					})();
+				});
+			},
+			pin = function () {
+				return page.find(".site-map-pin[data-sids='" + sid + "']")[0];
+			};
+
+		sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes) {
+			yes();
+		});
+		return wait(pin).then(function () {
+			page.find(".site-map-edit").trigger("click");
+			["pointerdown", "pointerup"].forEach(function (type) {
+				pin().dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, pointerType: "mouse", button: 0 }));
+			});
+			return wait(function () {
+				return $(".ui-popup-active .site-map-picker a").length;
+			});
+		}).then(function () {
+			$(".ui-popup-active .site-map-picker a").filter(function () {
+				return $(this).text() === OSApp.Language._("Delete");
+			}).trigger("click");
+			return wait(function () {
+				return !$(".ui-popup-active").length;
+			});
+		}).then(function () {
+			page.find(".site-map-edit").trigger("click");
+			return new Promise(function (resolve) {
+				setTimeout(resolve, OSApp.SiteMap.Constants.pinSaveDelay + 300);
+			});
+		});
+	}
+
+	it("should delete a valve's heads from the controller with it, so they don't come back on reload", function () {
+		this.timeout(8000);
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg(), drawings: "h,0,5000,5000,6000,5000\n" });
+
+		return openHomeMap().then(function () {
+			return deleteValve(0);
+		}).then(function () {
+			assert.deepEqual(remote.pins, {});
+			assert.equal(remote.drawings, "");
+			return loadMap();
+		}).then(function (loaded) {
+			assert.deepEqual(loaded.map.pins, {});
+			assert.deepEqual(loaded.map.drawings, {});
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should queue drawing uploads with the other changes", function () {
+		assert.isTrue(OSApp.Firmware.isChangeRequest("/umd?pw=x&off=0&tot=0"));
+		assert.isTrue(OSApp.Firmware.isChangeRequest("/um?pw=x&off=0&tot=10"));
+	});
+
+	it("should retry a failed upload, and not reload the old map from the controller meanwhile", function () {
+		this.timeout(10000);
+		var retryDelay = OSApp.SiteMap.Constants.retryDelay;
+
+		OSApp.SiteMap.Constants.retryDelay = 2000;
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg(), drawings: "h,0,5000,5000,6000,5000\n" });
+		remote.fail = { "/umd": 1 };
+
+		return openHomeMap().then(function () {
+			return deleteValve(0);
+		}).then(function () {
+			// The pins were saved but the drawings weren't, and the user is told
+			assert.deepEqual(remote.pins, {});
+			assert.equal(remote.drawings, "h,0,5000,5000,6000,5000\n");
+			assert.isTrue(OSApp.Errors.showError.calledWith(OSApp.Language._("Network Error")));
+			assert.isFalse(OSApp.Errors.showError.calledWith(OSApp.Language._("Settings have been saved")));
+
+			// A status refresh sees the controller's newer revision, but the map keeps the unsaved deletion
+			OSApp.currentSession.controller.options.smap = remote.rev;
+			$("html").trigger("datarefresh");
+			return new Promise(function (resolve) {
+				setTimeout(resolve, 100);
+			});
+		}).then(function () {
+			assert.lengthOf($("#sprinklers .site-map-run"), 0);
+			return new Promise(function (resolve) {
+				setTimeout(resolve, 2000);
+			});
+		}).then(function () {
+			// The retry went through, and says so
+			assert.equal(remote.drawings, "");
+			assert.isTrue(OSApp.Errors.showError.calledWith(OSApp.Language._("Settings have been saved")));
+			return loadMap();
+		}).then(function (loaded) {
+			assert.deepEqual(loaded.map.drawings, {});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.retryDelay = retryDelay;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should keep the other valves' drawings when deleting one valve", function () {
+		this.timeout(8000);
+		installController({
+			rev: 1,
+			pins: { 0: [5000, 5000], 1: [2000, 2000] },
+			image: jpeg(),
+			drawings: "h,0,5000,5000,6000,5000\nd,1,1000,1000,2000,2000\n"
+		});
+
+		return openHomeMap().then(function () {
+			return deleteValve(0);
+		}).then(function () {
+			assert.deepEqual(Object.keys(remote.pins), ["1"]);
+			assert.equal(remote.drawings, "d,1,1000,1000,2000,2000\n");
+			return loadMap();
+		}).then(function (loaded) {
+			assert.deepEqual(Object.keys(loaded.map.drawings), ["1"]);
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
 		});
 	});
 

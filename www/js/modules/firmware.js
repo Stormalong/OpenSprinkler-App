@@ -39,7 +39,7 @@ OSApp.Firmware.Constants = {
 };
 
 OSApp.Firmware.isChangeRequest = function( dest ) {
-	return /\/(?:cv|cs|csn|cr|cp|uwa|dp|dsn|dsl|co|cl|cu|up|cm|cmp|um|dm|sp|pq|dl|sa|sc|sb|sn)(?:\?|$)/.test( dest );
+	return /\/(?:cv|cs|csn|cr|cp|uwa|dp|dsn|dsl|co|cl|cu|up|cm|cmp|um|umd|dm|sp|pq|dl|sa|sc|sb|sn)(?:\?|$)/.test( dest );
 };
 
 // Wrapper function to communicate with OpenSprinkler

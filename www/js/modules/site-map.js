@@ -44,6 +44,9 @@ OSApp.SiteMap.Constants = {
 	uploadChunkChars: 6000,
 	pinSaveDelay: 500,
 
+	// A failed upload is tried again after this long (ms), until it goes through
+	retryDelay: 5000,
+
 	// After a pan or zoom stops for this long (ms), valves are regrouped and everything is redrawn
 	settleDelay: 150,
 
@@ -251,6 +254,15 @@ OSApp.SiteMap.downloadImage = function() {
 	} );
 };
 
+// Sends data to the controller as the request body, or through OpenThings Cloud, which doesn't pass on POST
+// requests with a body, as the URL parameter named param. An empty body is sent as a plain GET there.
+OSApp.SiteMap.sendData = function( dest, param, data ) {
+	if ( OSApp.currentSession.token ) {
+		return OSApp.Firmware.sendToOS( data ? dest + "&" + param + "=" + encodeURIComponent( data ) : dest, "json" );
+	}
+	return OSApp.Firmware.sendToOS( dest, "json", { body: data } );
+};
+
 // Uploads the image chunk by chunk; onProgress receives the fraction sent so far
 OSApp.SiteMap.uploadImage = function( dataURL, onProgress ) {
 	var upload = OSApp.SiteMap.getImageChunks( dataURL ),
@@ -264,7 +276,7 @@ OSApp.SiteMap.uploadImage = function( dataURL, onProgress ) {
 			if ( OSApp.currentSession.controller !== controller ) {
 				return $.Deferred().reject( { status: 0, statusText: "stale" } );
 			}
-			return OSApp.Firmware.sendToOS( "/um?pw=&off=" + chunk.offset + "&tot=" + upload.total, "json", { body: chunk.body } )
+			return OSApp.SiteMap.sendData( "/um?pw=&off=" + chunk.offset + "&tot=" + upload.total, "d", chunk.body )
 				.then( function() {
 					onProgress( ( index + 1 ) / upload.chunks.length );
 				} );
@@ -277,8 +289,8 @@ OSApp.SiteMap.uploadPins = function( pins ) {
 
 	// An empty body is ignored, so clearing all pins uses an empty p parameter instead
 	return encoded ?
-		OSApp.Firmware.sendToOS( "/cmp?pw=", "json", { body: encoded } ) :
-		OSApp.Firmware.sendToOS( "/cmp?pw=&p=", "json", { body: "" } );
+		OSApp.SiteMap.sendData( "/cmp?pw=", "p", encoded ) :
+		OSApp.SiteMap.sendData( "/cmp?pw=&p=", "p", "" );
 };
 
 OSApp.SiteMap.downloadDrawings = function() {
@@ -296,7 +308,7 @@ OSApp.SiteMap.uploadDrawings = function( drawings ) {
 		offset;
 
 	if ( !text ) {
-		return OSApp.Firmware.sendToOS( "/umd?pw=&off=0&tot=0", "json", { body: "" } );
+		return OSApp.SiteMap.sendData( "/umd?pw=&off=0&tot=0", "d", "" );
 	}
 	for ( offset = 0; offset < text.length; offset += size ) {
 		offsets.push( offset );
@@ -306,14 +318,13 @@ OSApp.SiteMap.uploadDrawings = function( drawings ) {
 			if ( OSApp.currentSession.controller !== controller ) {
 				return $.Deferred().reject( { status: 0, statusText: "stale" } );
 			}
-			return OSApp.Firmware.sendToOS( "/umd?pw=&off=" + start + "&tot=" + text.length, "json",
-				{ body: text.slice( start, start + size ) } );
+			return OSApp.SiteMap.sendData( "/umd?pw=&off=" + start + "&tot=" + text.length, "d", text.slice( start, start + size ) );
 		} );
 	}, $.Deferred().resolve().promise() );
 };
 
 OSApp.SiteMap.deleteRemote = function() {
-	return OSApp.Firmware.sendToOS( "/dm?pw=", "json", { body: "" } );
+	return OSApp.SiteMap.sendData( "/dm?pw=", "d", "" );
 };
 
 // Uploads a whole map (image, pins, then drawings) and resolves with it, tagged with the new controller revision
@@ -781,6 +792,9 @@ OSApp.SiteMap.createView = function() {
 
 		// Whether the view is the starting one (Reset Zoom), which is kept when the map is resized
 		atHome = true,
+
+		// Whether the last upload failed and is waiting to be tried again
+		uploadFailed = false,
 		maxZoomCache = {},
 		lastWidth = 0,
 		drag = null,
@@ -815,6 +829,7 @@ OSApp.SiteMap.createView = function() {
 
 	function uploadChanges() {
 		var changed = dirty,
+			retrying = uploadFailed,
 			request = $.Deferred().resolve().promise();
 
 		clearTimeout( pinSaveTimer );
@@ -838,7 +853,30 @@ OSApp.SiteMap.createView = function() {
 				return OSApp.SiteMap.uploadDrawings( map.drawings );
 			} );
 		}
-		return track( request.then( refreshRevision ) );
+		request = request.then( refreshRevision ).then( function() {
+			uploadFailed = false;
+			if ( retrying ) {
+				showSaved();
+			}
+		}, function( error ) {
+
+			// Part of the change may already be on the controller, so send all of it again later. Until then the
+			// timer keeps checkForRemoteChanges from replacing the map with the partly saved one.
+			if ( error && ( error.statusText === "stale" || error.status === 401 ) ) {
+				return;
+			}
+			$.each( changed, function( kind, value ) {
+				dirty[ kind ] = dirty[ kind ] || value;
+			} );
+			if ( !uploadFailed ) {
+				OSApp.Errors.showError( OSApp.Language._( "Network Error" ) );
+			}
+			uploadFailed = true;
+			clearTimeout( pinSaveTimer );
+			pinSaveTimer = setTimeout( uploadChanges, Constants.retryDelay );
+			return $.Deferred().reject( error );
+		} );
+		return track( request );
 	}
 
 	// Confirms a saved edit, like the options pages do
@@ -1780,11 +1818,14 @@ OSApp.SiteMap.createView = function() {
 
 	function showStationPicker( pos ) {
 		var names = getStationNames(),
+
+			// Disabled stations are listed only when Show Disabled is on, like the station cards
+			showDisabled = OSApp.Storage.getItemSync( "showDisabled" ) === "true",
 			list = "",
 			sid, popup;
 
 		for ( sid = 0; sid < names.length; sid++ ) {
-			if ( Object.prototype.hasOwnProperty.call( map.pins, sid ) ) {
+			if ( Object.prototype.hasOwnProperty.call( map.pins, sid ) || ( !showDisabled && OSApp.Stations.isDisabled( sid ) ) ) {
 				continue;
 			}
 			list += "<li><a href='#' data-sid='" + sid + "'>" + OSApp.Utils.htmlEscape( OSApp.Stations.getName( sid ) ) +
