@@ -594,28 +594,56 @@ OSApp.SiteMap.getCurve = function( points ) {
 	return segments;
 };
 
-// A view is { scale, x, y }: the image is drawn at scale times its fitted size, with its top-left corner offset x, y pixels
+// Size of an image with the given aspect ratio (height / width) that covers a viewport, cropping what doesn't fit.
+// Without a ratio (no image yet) it is the viewport itself.
+OSApp.SiteMap.getCoverSize = function( ratio, viewWidth, viewHeight ) {
+	var width;
+
+	if ( !ratio ) {
+		return { width: viewWidth, height: viewHeight };
+	}
+	width = Math.max( viewWidth, viewHeight / ratio );
+	return { width: width, height: width * ratio };
+};
+
+// A view is { scale, x, y }: the image is drawn at scale times its fitted size (width x height), with its top-left
+// corner offset x, y pixels. viewport ({ width, height, minScale }) is the visible area, the fitted size when omitted,
+// and minScale the furthest it may zoom out (1 when omitted). Along each axis the image is kept covering the viewport,
+// or centered in it while smaller.
 // overscrollRight lets the map be dragged that many pixels further left than its right edge, so whatever
 // is under the buttons along the right side can be moved out from under them, even at normal zoom
-OSApp.SiteMap.clampView = function( view, width, height, maxZoom, overscrollRight ) {
-	var scale = Math.min( maxZoom, Math.max( 1, view.scale ) );
+OSApp.SiteMap.clampView = function( view, width, height, maxZoom, overscrollRight, viewport ) {
+	var viewWidth = viewport ? viewport.width : width,
+		viewHeight = viewport ? viewport.height : height,
+		minScale = viewport && viewport.minScale ? viewport.minScale : 1,
+		scale = Math.min( maxZoom, Math.max( minScale, view.scale ) ),
+		clamp = function( offset, size, visible, overscroll ) {
+			var center = ( visible - size ) / 2,
+				lowest = visible - size - overscroll;
+
+			if ( size <= visible ) {
+				return Math.min( center, Math.max( Math.min( center, lowest ), offset ) );
+			}
+			return Math.min( 0, Math.max( lowest, offset ) );
+		};
+
 	return {
 		scale: scale,
-		x: Math.min( 0, Math.max( width - width * scale - ( overscrollRight || 0 ), view.x ) ),
-		y: Math.min( 0, Math.max( height - height * scale, view.y ) )
+		x: clamp( view.x, width * scale, viewWidth, overscrollRight || 0 ),
+		y: clamp( view.y, height * scale, viewHeight, 0 )
 	};
 };
 
 // Zoom by factor while keeping the point (px, py) of the viewport fixed on screen
-OSApp.SiteMap.zoomAt = function( view, factor, px, py, width, height, maxZoom ) {
-	var scale = Math.min( maxZoom, Math.max( 1, view.scale * factor ) ),
+OSApp.SiteMap.zoomAt = function( view, factor, px, py, width, height, maxZoom, viewport ) {
+	var scale = Math.min( maxZoom, Math.max( viewport && viewport.minScale ? viewport.minScale : 1, view.scale * factor ) ),
 		ratio = scale / view.scale;
 
 	return OSApp.SiteMap.clampView( {
 		scale: scale,
 		x: px - ( px - view.x ) * ratio,
 		y: py - ( py - view.y ) * ratio
-	}, width, height, maxZoom );
+	}, width, height, maxZoom, 0, viewport );
 };
 
 // Which view the home page shows: "cards" (station cards) or "map" (the site map), remembered per device
@@ -750,6 +778,9 @@ OSApp.SiteMap.createView = function() {
 		editing = false,
 		placingSid = null,
 		view = { scale: 1, x: 0, y: 0 },
+
+		// Whether the view is the starting one (Reset Zoom), which is kept when the map is resized
+		atHome = true,
 		maxZoomCache = {},
 		lastWidth = 0,
 		drag = null,
@@ -987,21 +1018,18 @@ OSApp.SiteMap.createView = function() {
 		container.toggleClass( "site-map-loading-blank", !mapLoaded && !map.image );
 	}
 
-	// Size the map to the largest box with the image's aspect ratio that fits on screen, so the page doesn't scroll
+	// The map fills the free area of the screen, so the page doesn't scroll; the image covers it (see getSize)
 	function fitMap() {
 		var content = page.closest( ".ui-content" ),
-			img = image[ 0 ],
-			ratio = map.image && img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0,
+			size,
 			bottom = ( parseFloat( content.css( "padding-bottom" ) ) || 0 ) + ( parseFloat( page.closest( ".ui-page" ).css( "padding-bottom" ) ) || 0 ) +
 				( parseFloat( page.css( "margin-bottom" ) ) || 0 ),
 			width = content.width(),
 			height = Math.max( Constants.minMapHeight, window.innerHeight - container.offset().top - bottom );
 
-		if ( ratio ) {
-			width = Math.min( width, height / ratio );
-			height = width * ratio;
-		}
 		container.css( { width: Math.floor( width ) + "px", height: Math.floor( height ) + "px" } );
+		size = getSize();
+		image.css( { width: size.width + "px", height: size.height + "px" } );
 		stretchPage();
 	}
 
@@ -1042,8 +1070,32 @@ OSApp.SiteMap.createView = function() {
 		return controls.is( ":visible" ) ? controls.outerWidth() + 8 : 0;
 	}
 
+	// Size of the image at normal zoom: just large enough to cover the map, with whatever doesn't fit cropped
 	function getSize() {
-		return { width: container.width(), height: container.height() };
+		var img = image[ 0 ],
+			ratio = map.image && img.naturalWidth ? img.naturalHeight / img.naturalWidth : 0;
+
+		return OSApp.SiteMap.getCoverSize( ratio, container.width(), container.height() );
+	}
+
+	// The visible area, and how far out it may zoom: until the whole image fits
+	function getViewport() {
+		var size = getSize(),
+			width = container.width(),
+			height = container.height();
+
+		return {
+			width: width,
+			height: height,
+			minScale: size.width && size.height ? Math.min( 1, width / size.width, height / size.height ) : 1
+		};
+	}
+
+	// Whether the image is larger than the map, so dragging pans it
+	function canPan() {
+		var size = getSize(),
+			viewport = getViewport();
+		return size.width * view.scale > viewport.width + 0.5 || size.height * view.scale > viewport.height + 0.5;
 	}
 
 	// Position of a map point (0-1) within the viewport, in pixels
@@ -1058,10 +1110,11 @@ OSApp.SiteMap.createView = function() {
 	// Map point (0-1) under a pointer, accounting for zoom and pan
 	function getRelativePosition( event, offsetX, offsetY ) {
 		var e = nativeEvent( event ),
-			rect = container[ 0 ].getBoundingClientRect();
+			rect = container[ 0 ].getBoundingClientRect(),
+			size = getSize();
 		return {
-			x: Math.min( 1, Math.max( 0, ( e.clientX - ( offsetX || 0 ) - rect.left - view.x ) / ( rect.width * view.scale ) ) ),
-			y: Math.min( 1, Math.max( 0, ( e.clientY - ( offsetY || 0 ) - rect.top - view.y ) / ( rect.height * view.scale ) ) )
+			x: Math.min( 1, Math.max( 0, ( e.clientX - ( offsetX || 0 ) - rect.left - view.x ) / ( size.width * view.scale ) ) ),
+			y: Math.min( 1, Math.max( 0, ( e.clientY - ( offsetY || 0 ) - rect.top - view.y ) / ( size.height * view.scale ) ) )
 		};
 	}
 
@@ -1072,11 +1125,12 @@ OSApp.SiteMap.createView = function() {
 
 		if ( !fromAnimation ) {
 			stopAnimation();
+			atHome = false;
 		}
-		view = OSApp.SiteMap.clampView( next, size.width, size.height, getMaxZoom(), getOverscroll() );
+		view = OSApp.SiteMap.clampView( next, size.width, size.height, getMaxZoom(), getOverscroll(), getViewport() );
 		lastWidth = size.width;
 		image.css( "transform", "translate(" + view.x + "px, " + view.y + "px) scale(" + view.scale + ")" );
-		container.toggleClass( "site-map-zoomed", view.scale > 1 );
+		container.toggleClass( "site-map-zoomed", canPan() );
 		if ( moving || fromAnimation ) {
 			scheduleMove();
 		} else {
@@ -1095,12 +1149,13 @@ OSApp.SiteMap.createView = function() {
 	// center of the map moves to its new spot, so zooming into a point looks like flying toward it.
 	function animateView( next ) {
 		var size = getSize(),
+			viewport = getViewport(),
 			width = size.width,
 			height = size.height,
 			start = view,
-			end = OSApp.SiteMap.clampView( next, width, height, getMaxZoom() ),
+			end = OSApp.SiteMap.clampView( next, width, height, getMaxZoom(), getOverscroll(), viewport ),
 			center = function( v ) {
-				return { x: ( width / 2 - v.x ) / ( width * v.scale ), y: ( height / 2 - v.y ) / ( height * v.scale ) };
+				return { x: ( viewport.width / 2 - v.x ) / ( width * v.scale ), y: ( viewport.height / 2 - v.y ) / ( height * v.scale ) };
 			},
 			from = center( start ),
 			to = center( end ),
@@ -1108,6 +1163,7 @@ OSApp.SiteMap.createView = function() {
 			reduceMotion = window.matchMedia && window.matchMedia( "(prefers-reduced-motion: reduce)" ).matches;
 
 		stopAnimation();
+		atHome = false;
 		if ( !Constants.zoomDuration || reduceMotion || !width || !height ) {
 			setView( end );
 			return;
@@ -1122,7 +1178,7 @@ OSApp.SiteMap.createView = function() {
 				x = from.x + ( to.x - from.x ) * eased,
 				y = from.y + ( to.y - from.y ) * eased;
 
-			setView( t < 1 ? { scale: scale, x: width / 2 - x * width * scale, y: height / 2 - y * height * scale } : end, true );
+			setView( t < 1 ? { scale: scale, x: viewport.width / 2 - x * width * scale, y: viewport.height / 2 - y * height * scale } : end, true );
 			animationFrame = t < 1 ? window.requestAnimationFrame( step ) : null;
 			if ( t >= 1 ) {
 				scheduleRender();
@@ -1139,19 +1195,25 @@ OSApp.SiteMap.createView = function() {
 		}
 	}
 
+	// The starting view: the image covers the map, centered
 	function resetView( animate ) {
-		goToView( { scale: 1, x: 0, y: 0 }, animate );
+		var size = getSize(),
+			viewport = getViewport();
+
+		goToView( { scale: 1, x: ( viewport.width - size.width ) / 2, y: ( viewport.height - size.height ) / 2 }, animate );
+		atHome = true;
 	}
 
 	// moving: one step of a continuous zoom (wheel, trackpad pinch)
 	function zoomBy( factor, px, py, animate, moving ) {
 		var size = getSize(),
+			viewport = getViewport(),
 			next;
 		if ( px === undefined ) {
-			px = size.width / 2;
-			py = size.height / 2;
+			px = viewport.width / 2;
+			py = viewport.height / 2;
 		}
-		next = OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, getMaxZoom() );
+		next = OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, getMaxZoom(), viewport );
 		if ( moving ) {
 			setView( next, false, true );
 		} else {
@@ -1161,12 +1223,13 @@ OSApp.SiteMap.createView = function() {
 
 	// Zoom in and center on a map point
 	function zoomTo( pos, scale, animate ) {
-		var size = getSize();
+		var size = getSize(),
+			viewport = getViewport();
 		scale = Math.min( getMaxZoom(), scale );
 		goToView( {
 			scale: scale,
-			x: size.width / 2 - pos.x * size.width * scale,
-			y: size.height / 2 - pos.y * size.height * scale
+			x: viewport.width / 2 - pos.x * size.width * scale,
+			y: viewport.height / 2 - pos.y * size.height * scale
 		}, animate );
 	}
 
@@ -1308,16 +1371,15 @@ OSApp.SiteMap.createView = function() {
 
 	// Head runs and drip lines, drawn in screen pixels so symbols and strokes keep their size when zoomed
 	function renderDrawings( stationCount ) {
-		var size = getSize(),
-			layer = drawLayer[ 0 ],
+		var layer = drawLayer[ 0 ],
 			anyRunning = false,
 			showHandles = editing;
 
 		while ( layer.firstChild ) {
 			layer.removeChild( layer.firstChild );
 		}
-		layer.setAttribute( "width", size.width );
-		layer.setAttribute( "height", size.height );
+		layer.setAttribute( "width", container.width() );
+		layer.setAttribute( "height", container.height() );
 
 		// Everything is drawn into one group, so a pan or zoom can move it with a transform (see repositionLayers)
 		drawRoot = svgElement( "g", { "class": "site-map-drawings-root" } );
@@ -1426,6 +1488,10 @@ OSApp.SiteMap.createView = function() {
 
 	function onResize() {
 		fitMap();
+		if ( atHome ) {
+			resetView();
+			return;
+		}
 
 		var size = getSize(),
 			ratio = lastWidth ? size.width / lastWidth : 1;
@@ -2029,7 +2095,7 @@ OSApp.SiteMap.createView = function() {
 
 			if ( oldDistance > 0 ) {
 				next = OSApp.SiteMap.zoomAt( view, Math.hypot( current.x - other.x, current.y - other.y ) / oldDistance,
-					oldMid.x - rect.left, oldMid.y - rect.top, size.width, size.height, getMaxZoom() );
+					oldMid.x - rect.left, oldMid.y - rect.top, size.width, size.height, getMaxZoom(), getViewport() );
 
 				// Pan with the midpoint so the map follows both fingers
 				next.x += ( current.x + other.x ) / 2 - oldMid.x;
@@ -2091,7 +2157,7 @@ OSApp.SiteMap.createView = function() {
 			delta = event.deltaY * ( event.deltaMode === 1 ? 33 : 1 );
 
 		// Let the page scroll when the map can't zoom out any further
-		if ( delta > 0 && view.scale <= 1 ) {
+		if ( delta > 0 && view.scale <= getViewport().minScale ) {
 			return;
 		}
 		event.preventDefault();
@@ -2157,7 +2223,7 @@ OSApp.SiteMap.createView = function() {
 		}
 
 		// Arrow keys only take over from page scrolling while zoomed in
-		if ( view.scale > 1 || e.key.indexOf( "Arrow" ) !== 0 ) {
+		if ( canPan() || e.key.indexOf( "Arrow" ) !== 0 ) {
 			event.preventDefault();
 		}
 	}
@@ -2279,7 +2345,11 @@ OSApp.SiteMap.createView = function() {
 		timeTimer = setInterval( updateTimes, 1000 );
 		watchLayoutAbove();
 		fitMap();
-		setView( view );
+		if ( atHome ) {
+			resetView();
+		} else {
+			setView( view );
+		}
 
 		updateHint();
 		OSApp.Storage.get( "current_site", function( data ) {

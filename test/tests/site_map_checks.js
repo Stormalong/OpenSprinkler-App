@@ -100,11 +100,26 @@ describe("Site Map Checks", function () {
 		});
 	}
 
-	// Shows the map on the home page and runs check on it; check may return a promise
+	// Shows the map on the home page, zoomed out to the whole image, and runs check on it; check may return a promise
 	function showSiteMap(done, check) {
-		openHomeMap().then(check).then(function () {
+		openHomeMap().then(showWholeImage).then(check).then(function () {
 			done();
 		}, done);
+	}
+
+	// The map opens with the image covering it, cropped; zoom out until all of it is visible
+	function showWholeImage(root) {
+		for (var i = 0; i < 8; i++) {
+			root.find(".site-map-zoom-out").trigger("click");
+		}
+		return nextFrame().then(function () {
+			return root;
+		});
+	}
+
+	// Where the image is drawn on screen, which is what map positions (0-1) are relative to
+	function imageRect(page) {
+		return page.find(".site-map-image-el")[0].getBoundingClientRect();
 	}
 
 	// Native events, as jQuery 2 doesn't copy pointer properties onto its own event objects
@@ -154,22 +169,112 @@ describe("Site Map Checks", function () {
 		});
 	});
 
-	it("should fit the map on screen with the image's aspect ratio and the edit button on top", function (done) {
+	it("should fit the map on screen, covered by the image, with the edit button on top", function () {
 		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
 
-		showSiteMap(done, function (page) {
+		return openHomeMap().then(function (page) {
 			var container = page.find(".site-map-container"),
 				rect = container[0].getBoundingClientRect(),
+				image = imageRect(page),
 				edit = page.find(".site-map-edit")[0].getBoundingClientRect();
 
 			assert.isFalse(container.hasClass("site-map-empty"));
-
-			// The test image is square
-			assert.closeTo(rect.width, rect.height, 1);
 			assert.isAtMost(rect.bottom, window.innerHeight);
+
+			// The square test image covers the map in both directions
+			assert.closeTo(image.width, image.height, 1);
+			assert.isAtMost(image.left, rect.left + 0.5);
+			assert.isAtLeast(image.right, rect.right - 0.5);
+			assert.isAtMost(image.top, rect.top + 0.5);
+			assert.isAtLeast(image.bottom, rect.bottom - 0.5);
 
 			assert.isAtLeast(edit.top, rect.top);
 			assert.isAtMost(edit.bottom, rect.bottom);
+		});
+	});
+
+	it("should size the image to cover the map area, and keep views within it", function () {
+		// A wide image on a tall map is as tall as the map, and a tall image on a wide map as wide
+		assert.deepEqual(OSApp.SiteMap.getCoverSize(0.5, 300, 600), { width: 1200, height: 600 });
+		assert.deepEqual(OSApp.SiteMap.getCoverSize(2, 600, 300), { width: 600, height: 1200 });
+		assert.deepEqual(OSApp.SiteMap.getCoverSize(0, 600, 300), { width: 600, height: 300 });
+
+		// Zoomed out below the covering size, the image is centered in the viewport
+		var viewport = { width: 300, height: 600, minScale: 0.25 };
+		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 0.25, x: 80, y: -40 }, 1200, 600, 8, 0, viewport), { scale: 0.25, x: 0, y: 225 });
+		assert.equal(OSApp.SiteMap.clampView({ scale: 0.1, x: 0, y: 0 }, 1200, 600, 8, 0, viewport).scale, 0.25);
+
+		// At the covering size it pans sideways across the whole image, but not up or down
+		assert.deepEqual(OSApp.SiteMap.clampView({ scale: 1, x: -2000, y: 50 }, 1200, 600, 8, 0, viewport), { scale: 1, x: -900, y: 0 });
+
+		// Zooming out keeps the point under the pointer, then settles centered
+		assert.equal(OSApp.SiteMap.zoomAt({ scale: 1, x: -450, y: 0 }, 0.1, 150, 300, 1200, 600, 8, viewport).scale, 0.25);
+	});
+
+	it("should fill the map area with the image, cropping it until zoomed out", function () {
+		OSApp.SiteMap.save(siteName, { image: wideImage(), pins: { 0: { x: 0.5, y: 0.5 } } });
+
+		return openHomeMap().then(function (root) {
+			var container = root.find(".site-map-container"),
+				rect = container[0].getBoundingClientRect(),
+				image = function () {
+					return root.find(".site-map-image-el")[0].getBoundingClientRect();
+				},
+				pin = root.find(".site-map-pin")[0].getBoundingClientRect();
+
+			// The map uses the whole free area of the screen, not just the image's shape
+			pageFitsWindow();
+			assert.isAbove(rect.height, rect.width / 5 + 50);
+
+			// The wide image is as tall as the map and centered, with its sides off screen
+			assert.closeTo(image().height, rect.height, 1);
+			assert.closeTo(image().top, rect.top, 1);
+			assert.isAbove(image().width, rect.width + 50);
+			assert.closeTo(image().left + image().width / 2, rect.left + rect.width / 2, 1);
+			assert.closeTo(pin.left + pin.width / 2, rect.left + rect.width / 2, 1);
+			assert.isTrue(container.hasClass("site-map-zoomed"), "it can be dragged sideways");
+
+			// Zooming all the way out shows the whole image, centered
+			for (var i = 0; i < 6; i++) {
+				root.find(".site-map-zoom-out").trigger("click");
+			}
+			return nextFrame().then(function () {
+				assert.closeTo(image().width, rect.width, 1);
+				assert.closeTo(image().top + image().height / 2, rect.top + rect.height / 2, 1);
+
+				// Reset Zoom goes back to filling the map area
+				root.find(".site-map-zoom-reset").trigger("click");
+				return nextFrame();
+			}).then(function () {
+				assert.closeTo(image().height, rect.height, 1);
+			});
+		});
+	});
+
+	it("should place a valve where the cropped image was tapped", function () {
+		OSApp.SiteMap.save(siteName, { image: wideImage(), pins: {} });
+
+		return openHomeMap().then(function (root) {
+			var rect = root.find(".site-map-container")[0].getBoundingClientRect(),
+				x = rect.left + rect.width / 2,
+				y = rect.top + rect.height / 4;
+
+			root.find(".site-map-edit").trigger("click");
+			pointer(root.find(".site-map-container"), "pointerdown", x, y);
+			pointer(root.find(".site-map-container"), "pointerup", x, y);
+			return waitFor(function () {
+				return $(".site-map-picker a[data-sid]").length;
+			}).then(function () {
+				$(".site-map-picker a[data-sid]").first().trigger("click");
+				root.find(".site-map-edit").trigger("click");
+				return new Promise(function (resolve) {
+					OSApp.SiteMap.load(siteName, resolve);
+				});
+			}).then(function (map) {
+				var sid = Object.keys(map.pins)[0];
+				assert.closeTo(map.pins[sid].x, 0.5, 0.01);
+				assert.closeTo(map.pins[sid].y, 0.25, 0.01);
+			});
 		});
 	});
 
@@ -185,12 +290,13 @@ describe("Site Map Checks", function () {
 			// Pins for stations that do not exist are skipped
 			assert.lengthOf(pins, 1);
 			assert.equal(pins.attr("data-sids"), "0");
-			assert.closeTo(parseFloat(pins[0].style.left), 0.25 * page.find(".site-map-container").width(), 0.5);
-			assert.closeTo(parseFloat(pins[0].style.top), 0.75 * page.find(".site-map-container").height(), 0.5);
+			var map = imageRect(page),
+				container = page.find(".site-map-container")[0].getBoundingClientRect(),
+				pin = pins[0].getBoundingClientRect();
+			assert.closeTo(parseFloat(pins[0].style.left), map.left - container.left + 0.25 * map.width, 0.5);
+			assert.closeTo(parseFloat(pins[0].style.top), map.top - container.top + 0.75 * map.height, 0.5);
 
 			// The valve icon is centered on that spot on the map, not inside another element
-			var map = page.find(".site-map-container")[0].getBoundingClientRect(),
-				pin = pins[0].getBoundingClientRect();
 			assert.closeTo(pin.left + pin.width / 2, map.left + 0.25 * map.width, 1);
 			assert.closeTo(pin.top + pin.height / 2, map.top + 0.75 * map.height, 1);
 			assert.lengthOf(pins.find(".site-map-valve"), 1);
@@ -443,10 +549,12 @@ describe("Site Map Checks", function () {
 					$(document).trigger($.Event("keydown", { key: name, target: document.body, originalEvent: { key: name } }));
 				};
 
-			// Wheel up zooms in around the cursor
+			// Wheel up zooms in around the cursor, from the whole image to twice its size
+			var whole = scaleOf(page);
+			assert.isFalse(container.hasClass("site-map-zoomed"));
 			container[0].dispatchEvent(new WheelEvent("wheel", { deltaY: -300, clientX: x, clientY: y, bubbles: true, cancelable: true }));
 			assert.isTrue(container.hasClass("site-map-zoomed"));
-			assert.include(image.style.transform, "scale(2)");
+			assert.closeTo(scaleOf(page), whole * 2, 0.001);
 
 			// Dragging the background pans the map
 			var before = image.style.transform;
@@ -456,12 +564,16 @@ describe("Site Map Checks", function () {
 			assert.notEqual(image.style.transform, before);
 			assert.isFalse(container.hasClass("site-map-panning"));
 
+			// 0 goes back to the image covering the map, and - zooms out from there to the whole image
 			key("0");
+			assert.equal(scaleOf(page), 1);
+			for (var i = 0; i < 4; i++) {
+				key("-");
+			}
+			assert.closeTo(scaleOf(page), whole, 0.001);
 			assert.isFalse(container.hasClass("site-map-zoomed"));
 			key("+");
 			assert.isTrue(container.hasClass("site-map-zoomed"));
-			key("-");
-			assert.isFalse(container.hasClass("site-map-zoomed"));
 		});
 	});
 
@@ -509,7 +621,7 @@ describe("Site Map Checks", function () {
 
 	function tapMap(page, x, y) {
 		var container = page.find(".site-map-container"),
-			rect = container[0].getBoundingClientRect(),
+			rect = imageRect(page),
 			px = rect.left + x * rect.width,
 			py = rect.top + y * rect.height,
 
@@ -588,17 +700,23 @@ describe("Site Map Checks", function () {
 		});
 
 		showSiteMap(done, function (page) {
-			var width = page.find(".site-map-container").width(),
-				height = page.find(".site-map-container").height(),
+			var map = imageRect(page),
+				container = page.find(".site-map-container")[0].getBoundingClientRect(),
+				x = function (fraction) {
+					return map.left - container.left + fraction * map.width;
+				},
+				y = function (fraction) {
+					return map.top - container.top + fraction * map.height;
+				},
 				feeds = page.find(".site-map-run-feed");
 
 			// The drip line starts at its valve and station 2 has no valve, so only the head run gets a pipe
 			assert.lengthOf(feeds, 1);
 			assert.equal(feeds.closest(".site-map-run").attr("class").indexOf("site-map-run-heads") !== -1, true);
-			assert.closeTo(pathPoint(feeds[0], 0).x, 0.1 * width, 0.5);
-			assert.closeTo(pathPoint(feeds[0], 0).y, 0.2 * height, 0.5);
-			assert.closeTo(pathPoint(feeds[0], 1).x, 0.4 * width, 0.5);
-			assert.closeTo(pathPoint(feeds[0], 1).y, 0.2 * height, 0.5);
+			assert.closeTo(pathPoint(feeds[0], 0).x, x(0.1), 0.5);
+			assert.closeTo(pathPoint(feeds[0], 0).y, y(0.2), 0.5);
+			assert.closeTo(pathPoint(feeds[0], 1).x, x(0.4), 0.5);
+			assert.closeTo(pathPoint(feeds[0], 1).y, y(0.2), 0.5);
 		});
 	});
 
@@ -708,7 +826,8 @@ describe("Site Map Checks", function () {
 
 		showSiteMap(done, function (page) {
 			var container = page.find(".site-map-container"),
-				rect = container[0].getBoundingClientRect();
+				rect = container[0].getBoundingClientRect(),
+				whole = scaleOf(page);
 
 			container[0].dispatchEvent(new WheelEvent("wheel", { deltaY: -300, clientX: rect.left + 10, clientY: rect.top + 10, bubbles: true, cancelable: true }));
 			return nextFrame().then(function () {
@@ -720,11 +839,12 @@ describe("Site Map Checks", function () {
 					mapBox = container[0].getBoundingClientRect(),
 					check = function () {
 						box = head.getBoundingClientRect();
-						assert.closeTo(box.left + box.width / 2 - mapBox.left, x + 0.25 * container.width() * scale, 1);
-						assert.closeTo(box.top + box.height / 2 - mapBox.top, y + 0.75 * container.height() * scale, 1);
-					};
+						assert.closeTo(box.left + box.width / 2 - mapBox.left, x + 0.25 * imageEl.offsetWidth * scale, 1);
+						assert.closeTo(box.top + box.height / 2 - mapBox.top, y + 0.75 * imageEl.offsetHeight * scale, 1);
+					},
+					imageEl = page.find(".site-map-image-el")[0];
 
-				assert.isAbove(scale, 1);
+				assert.isAbove(scale, whole);
 
 				// Right away, while the drawings are moved as one piece, and after they are redrawn
 				check();
@@ -1042,11 +1162,6 @@ describe("Site Map Checks", function () {
 			$(window).trigger("resize.sitemap");
 			return settle();
 		}).then(function () {
-			var root = $("#sprinklers .site-map-view"),
-				mapBottom = root.find(".site-map-container")[0].getBoundingClientRect().bottom;
-
-			// The map really is shorter than the window here, so only the page's minimum height fills the gap
-			assert.isBelow(mapBottom, window.innerHeight - 50);
 			pageFitsWindow();
 		});
 	});
@@ -1205,7 +1320,7 @@ describe("Site Map Checks", function () {
 
 		return openHomeMap().then(function (page) {
 			// Put the valve right under the Edit button
-			var map = page.find(".site-map-container")[0].getBoundingClientRect(),
+			var map = imageRect(page),
 				button = page.find(".site-map-edit")[0].getBoundingClientRect();
 
 			OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: {
@@ -1558,7 +1673,7 @@ describe("Site Map Checks", function () {
 		drawings[last] = [{ type: "drip", pts: [[0.7, 0.5], [0.8, 0.6]] }];
 		OSApp.SiteMap.save(siteName, { image: testImage, pins: pins, drawings: drawings });
 
-		return openHomeMap().then(function (page) {
+		return openHomeMap().then(showWholeImage).then(function (page) {
 			assert.lengthOf(page.find(".site-map-pin"), 2);
 
 			// Fewer stations: the valve on the missing station is hidden, not deleted
