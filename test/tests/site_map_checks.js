@@ -1134,6 +1134,48 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should discard an edit when leaving the map without saving", function () {
+		var original = { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} };
+
+		OSApp.SiteMap.save(siteName, original);
+		return openHomeMap().then(function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tap(page.find(".site-map-pin"));
+			return chooseAction("Add drip line").then(function () {
+				tapMap(page, 0.3, 0.5);
+				tapMap(page, 0.6, 0.5);
+				page.find(".site-map-draw-done").trigger("click");
+
+				// Switching to the cards leaves the map
+				OSApp.SiteMap.setHomeView("cards");
+				assert.isFalse(page.hasClass("site-map-editing"));
+				return storedMap();
+			}).then(function (map) {
+				assert.deepEqual(map.drawings, {});
+				OSApp.SiteMap.setHomeView("map");
+				assert.lengthOf(page.find(".site-map-run"), 0);
+			});
+		});
+	});
+
+	it("should mark save, cancel and clear clearly while editing", function () {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: {} });
+
+		return openHomeMap().then(function (page) {
+			var edit = page.find(".site-map-edit");
+
+			assert.isTrue(edit.hasClass("ui-icon-edit") && !edit.hasClass("green"));
+			edit.trigger("click");
+			assert.isTrue(edit.hasClass("ui-icon-check") && edit.hasClass("green"));
+			assert.equal(edit.attr("title"), "Save changes");
+			assert.isTrue(page.find(".site-map-cancel").is(".ui-icon-delete.red"));
+			assert.isTrue(page.find(".site-map-clear").hasClass("ui-icon-back"));
+			assert.isFalse(page.find(".site-map-clear").hasClass("red"));
+			page.find(".site-map-cancel").trigger("click");
+			assert.isFalse(edit.hasClass("green"));
+		});
+	});
+
 	it("should discard a drawing in progress when an edit is cancelled", function (done) {
 		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} });
 

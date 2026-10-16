@@ -637,9 +637,9 @@ OSApp.SiteMap.createView = function() {
 					<div class="site-map-controls">
 						<div class="site-map-toolbar">
 							<a href="#" title="${OSApp.Language._( "Edit" )}" class="site-map-edit ui-btn ui-btn-icon-notext ui-icon-edit ui-corner-all ui-mini">${OSApp.Language._( "Edit" )}</a>
-							<a href="#" title="${OSApp.Language._( "Cancel changes" )}" class="site-map-cancel ui-btn ui-btn-icon-notext ui-icon-back ui-corner-all ui-mini">${OSApp.Language._( "Cancel changes" )}</a>
+							<a href="#" title="${OSApp.Language._( "Cancel changes" )}" class="site-map-cancel ui-btn ui-btn-icon-notext ui-icon-delete ui-corner-all ui-mini red">${OSApp.Language._( "Cancel changes" )}</a>
 							<a href="#" title="${OSApp.Language._( "Set Image" )}" class="site-map-image ui-btn ui-btn-icon-notext ui-icon-camera ui-corner-all ui-mini">${OSApp.Language._( "Set Image" )}</a>
-							<a href="#" title="${OSApp.Language._( "Clear" )}" class="site-map-clear ui-btn ui-btn-icon-notext ui-icon-delete ui-corner-all ui-mini red">${OSApp.Language._( "Clear" )}</a>
+							<a href="#" title="${OSApp.Language._( "Clear" )}" class="site-map-clear ui-btn ui-btn-icon-notext ui-icon-back ui-corner-all ui-mini">${OSApp.Language._( "Clear" )}</a>
 						</div>
 						<div class="site-map-zoom">
 							<a href="#" title="${OSApp.Language._( "Zoom In" )} (+)" class="site-map-zoom-in ui-btn ui-btn-icon-notext ui-icon-plus ui-corner-all ui-mini">${OSApp.Language._( "Zoom In" )}</a>
@@ -837,9 +837,9 @@ OSApp.SiteMap.createView = function() {
 		page.find( ".site-map-image, .site-map-clear, .site-map-cancel" ).toggle( editing );
 		page.find( ".site-map-edit" )
 			.toggleClass( "ui-icon-edit", !editing )
-			.toggleClass( "ui-icon-check", editing )
-			.attr( "title", editing ? OSApp.Language._( "Done" ) : OSApp.Language._( "Edit" ) )
-			.text( editing ? OSApp.Language._( "Done" ) : OSApp.Language._( "Edit" ) );
+			.toggleClass( "ui-icon-check green", editing )
+			.attr( "title", editing ? OSApp.Language._( "Save changes" ) : OSApp.Language._( "Edit" ) )
+			.text( editing ? OSApp.Language._( "Save changes" ) : OSApp.Language._( "Edit" ) );
 
 		// Redraw to show or hide the point handles
 		renderPins();
@@ -1980,8 +1980,10 @@ OSApp.SiteMap.createView = function() {
 			return;
 		}
 		active = false;
+
+		// Leaving without tapping Done discards the edit
 		if ( editing ) {
-			setEditing( false );
+			setEditing( false, true );
 		}
 
 		// Forget any gesture or animation in progress; its pointer events won't arrive while hidden
