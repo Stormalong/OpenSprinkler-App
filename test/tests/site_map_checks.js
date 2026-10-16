@@ -84,6 +84,10 @@ describe("Site Map Checks", function () {
 
 		// Back to the station cards, unzoomed, so the next test loads the map afresh
 		$("#sprinklers .site-map-zoom-reset").trigger("click");
+
+		// A message from this test, such as "Site map has been saved", could cover the next test's taps
+		clearTimeout(OSApp.uiState.errorTimeout);
+		$.mobile.loading("hide");
 		OSApp.SiteMap.setHomeView("cards");
 	});
 
@@ -1134,6 +1138,42 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should confirm a saved edit, but not a cancelled or empty one", function () {
+		var message = sinon.stub(OSApp.Errors, "showError"),
+			saved = function () {
+				return message.getCalls().filter(function (call) {
+					return call.args[0] === "Site map has been saved";
+				}).length;
+			};
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} });
+		return openHomeMap().then(function (page) {
+			// Nothing changed
+			page.find(".site-map-edit").trigger("click").trigger("click");
+			assert.equal(saved(), 0);
+
+			page.find(".site-map-edit").trigger("click");
+			tap(page.find(".site-map-pin"));
+			return chooseAction("Add heads").then(function () {
+				tapMap(page, 0.4, 0.5);
+				page.find(".site-map-draw-done").trigger("click");
+				page.find(".site-map-cancel").trigger("click");
+				assert.equal(saved(), 0);
+
+				page.find(".site-map-edit").trigger("click");
+				tap(page.find(".site-map-pin"));
+				return chooseAction("Add heads");
+			}).then(function () {
+				tapMap(page, 0.4, 0.5);
+				page.find(".site-map-draw-done").trigger("click");
+				page.find(".site-map-edit").trigger("click");
+				assert.equal(saved(), 1);
+			});
+		}).finally(function () {
+			message.restore();
+		});
+	});
+
 	it("should discard an edit when leaving the map without saving", function () {
 		var original = { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} };
 
@@ -1685,6 +1725,9 @@ describe("Site Map Controller Storage", function () {
 			}).then(function () {
 				assert.lengthOf(requestsTo("/cmp"), 1);
 				assert.isBelow(remote.pins[0][0], 3000);
+
+				// Confirmed once the controller has it
+				assert.isTrue(OSApp.Errors.showError.calledWith("Site map has been saved"));
 			});
 		}).finally(function () {
 			OSApp.SiteMap.setHomeView("cards");

@@ -724,7 +724,12 @@ OSApp.SiteMap.createView = function() {
 				return OSApp.SiteMap.uploadDrawings( map.drawings );
 			} );
 		}
-		track( request.then( refreshRevision ) );
+		return track( request.then( refreshRevision ) );
+	}
+
+	// Confirms a saved edit, like the options pages do
+	function showSaved() {
+		OSApp.Errors.showError( OSApp.Language._( "Site map has been saved" ) );
 	}
 
 	// Counts requests in flight so a data refresh doesn't reload the map while it is being saved
@@ -777,11 +782,13 @@ OSApp.SiteMap.createView = function() {
 		}
 		if ( source === "controller" ) {
 			OSApp.SiteMap.save( siteName, map, true );
-			uploadChanges();
+			uploadChanges().then( showSaved );
 			return;
 		}
 		dirty = { pins: false, drawings: false, image: false };
-		if ( !OSApp.SiteMap.save( siteName, map ) && snapshot ) {
+		if ( OSApp.SiteMap.save( siteName, map ) ) {
+			showSaved();
+		} else if ( snapshot ) {
 
 			// Not enough room on this device for the new image; keep the rest of the changes
 			map.image = snapshot.image;
