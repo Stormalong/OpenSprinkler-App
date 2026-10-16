@@ -1174,6 +1174,86 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should start a new drip line at its valve, dashed from there while it is drawn", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.2 } }, drawings: {} });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tap(page.find(".site-map-pin"));
+			return chooseAction(OSApp.Language._("Add drip line")).then(function () {
+				tapMap(page, 0.5, 0.5);
+				tapMap(page, 0.8, 0.5);
+
+				// Before saving: no solid pipe, and the dashed line begins at the valve
+				var map = imageRect(page),
+					container = page.find(".site-map-container")[0].getBoundingClientRect(),
+					line = page.find(".site-map-run-drip .site-map-run-line")[0];
+				assert.lengthOf(page.find(".site-map-run-feed"), 0);
+				assert.closeTo(pathPoint(line, 0).x, map.left - container.left + 0.2 * map.width, 0.5);
+				assert.closeTo(pathPoint(line, 0).y, map.top - container.top + 0.2 * map.height, 0.5);
+
+				page.find(".site-map-draw-done").trigger("click");
+				assert.lengthOf(page.find(".site-map-run-feed"), 0);
+				return doneEditing(page);
+			}).then(function (map) {
+				assert.lengthOf(map.drawings[0][0].pts, 3);
+				assert.deepEqual(map.drawings[0][0].pts[0], [0.2, 0.2]);
+			});
+		});
+	});
+
+	// Taps a run's point handle in edit mode and chooses Delete
+	function deletePoint(page, runIndex, pointIndex) {
+		var handle = page.find(".site-map-run[data-run='" + runIndex + "'] .site-map-handle[data-point='" + pointIndex + "']")[0],
+			box = handle.getBoundingClientRect(),
+			x = box.left + box.width / 2,
+			y = box.top + box.height / 2;
+
+		pointer(handle, "pointerdown", x, y);
+		pointer(handle, "pointerup", x, y);
+		return chooseAction(OSApp.Language._("Delete"));
+	}
+
+	it("should delete just the tapped point or head in the middle of a line", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: { 1: [
+			{ type: "drip", pts: [[0.1, 0.5], [0.5, 0.5], [0.9, 0.5]] },
+			{ type: "heads", pts: [[0.1, 0.2], [0.4, 0.2], [0.7, 0.2]] }
+		] } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			return deletePoint(page, 0, 1).then(function () {
+				return deletePoint(page, 1, 1);
+			}).then(function () {
+				return doneEditing(page);
+			}).then(function (map) {
+				assert.deepEqual(map.drawings[1], [
+					{ type: "drip", pts: [[0.1, 0.5], [0.9, 0.5]] },
+					{ type: "heads", pts: [[0.1, 0.2], [0.7, 0.2]] }
+				]);
+			});
+		});
+	});
+
+	it("should delete a line when deleting a point would leave it too short", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: { 1: [
+			{ type: "drip", pts: [[0.1, 0.5], [0.9, 0.5]] },
+			{ type: "heads", pts: [[0.3, 0.2], [0.6, 0.2]] }
+		] } });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			return deletePoint(page, 0, 0).then(function () {
+				return deletePoint(page, 0, 1);
+			}).then(function () {
+				return doneEditing(page);
+			}).then(function (map) {
+				// The drip line can't lose a point, but a head can go from the run of two
+				assert.deepEqual(map.drawings[1], [{ type: "heads", pts: [[0.3, 0.2]] }]);
+			});
+		});
+	});
+
 	it("should run the station when its drawing is tapped", function (done) {
 		var control;
 

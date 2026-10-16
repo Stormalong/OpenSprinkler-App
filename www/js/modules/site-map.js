@@ -1737,8 +1737,9 @@ OSApp.SiteMap.createView = function() {
 		] );
 	}
 
-	// at is the map point that was tapped, where a branch can start
-	function showRunActions( sid, runIndex, at ) {
+	// at is the map point that was tapped, where a branch can start; pointIndex is set when a point's handle was
+	// tapped, and then Delete removes just that point
+	function showRunActions( sid, runIndex, at, pointIndex ) {
 		var run = map.drawings[ sid ][ runIndex ],
 			min = OSApp.SiteMap.getMinPoints( run ),
 			items = [
@@ -1767,11 +1768,23 @@ OSApp.SiteMap.createView = function() {
 			} } );
 		}
 		items.push( { label: OSApp.Language._( "Delete" ), icon: "delete", action: function() {
-				removeRun( sid, run );
+				if ( pointIndex === undefined || !removePoint( run, pointIndex ) ) {
+					removeRun( sid, run );
+				}
 				persist( [ "drawings" ] );
 				renderPins();
 			} } );
 		showActions( OSApp.Stations.getName( sid ), items );
+	}
+
+	// Removes one point of a run, unless that would leave it too short to keep or it is where a branch joins;
+	// returns whether it did
+	function removePoint( run, pointIndex ) {
+		if ( ( run.branch && pointIndex === 0 ) || run.pts.length <= OSApp.SiteMap.getMinPoints( run ) ) {
+			return false;
+		}
+		run.pts.splice( pointIndex, 1 );
+		return true;
 	}
 
 	function removeRun( sid, run ) {
@@ -1809,11 +1822,6 @@ OSApp.SiteMap.createView = function() {
 		drawing = null;
 		page.removeClass( "site-map-drawing-mode" );
 
-		// A drip line given only its end runs from the valve
-		if ( current.isNew && !current.run.branch && current.run.type === "drip" && current.run.pts.length === 1 &&
-			map.pins[ current.sid ] ) {
-			current.run.pts.unshift( [ map.pins[ current.sid ].x, map.pins[ current.sid ].y ] );
-		}
 		if ( current.run.pts.length < OSApp.SiteMap.getMinPoints( current.run ) ) {
 			if ( current.isNew ) {
 				removeRun( current.sid, current.run );
@@ -1838,7 +1846,8 @@ OSApp.SiteMap.createView = function() {
 		renderPins();
 	}
 
-	// Adds a point to the run being drawn; the first point of a new run snaps to its valve when tapped near it
+	// Adds a point to the run being drawn. The first point of a new run snaps to its valve when tapped near it,
+	// and a new drip line always starts at its valve, so it is dashed from there rather than fed by a pipe.
 	function addDrawingPoint( event ) {
 		var pos = getRelativePosition( event ),
 			valve = map.pins[ drawing.sid ],
@@ -1849,6 +1858,8 @@ OSApp.SiteMap.createView = function() {
 			valveScreen = toScreen( valve );
 			if ( Math.hypot( screen.left - valveScreen.left, screen.top - valveScreen.top ) <= Constants.snapRadius ) {
 				pos = { x: valve.x, y: valve.y };
+			} else if ( drawing.run.type === "drip" ) {
+				drawing.run.pts.push( [ valve.x, valve.y ] );
 			}
 		}
 		drawing.run.pts.push( [ pos.x, pos.y ] );
@@ -2220,7 +2231,7 @@ OSApp.SiteMap.createView = function() {
 		} else if ( event.type === "pointerup" && !drawing ) {
 			ignoreFollowingClick( event );
 			var point = map.drawings[ current.sid ][ current.runIndex ].pts[ current.pointIndex ];
-			showRunActions( current.sid, current.runIndex, { x: point[ 0 ], y: point[ 1 ] } );
+			showRunActions( current.sid, current.runIndex, { x: point[ 0 ], y: point[ 1 ] }, current.pointIndex );
 		}
 	} );
 
