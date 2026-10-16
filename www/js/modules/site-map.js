@@ -29,6 +29,9 @@ OSApp.SiteMap.Constants = {
 	minMapHeight: 200,
 	zoomStep: 2,
 
+	// Length of the animated zooms (buttons, keys, double-click, tapping a group) in milliseconds; 0 jumps
+	zoomDuration: 300,
+
 	// Controller storage: smaller images fit embedded flash, pin positions are stored as 0-coordScale
 	controllerImageSize: 1280,
 	controllerImageQuality: 0.75,
@@ -671,6 +674,7 @@ OSApp.SiteMap.createView = function() {
 		pointers = {},
 		gesture = null,
 		gestureScale = 1,
+		animationFrame = null,
 		renderQueued = false;
 
 	// Saves changes to the pins and/or drawings; on the controller they are batched so dragging sends one request
@@ -839,8 +843,13 @@ OSApp.SiteMap.createView = function() {
 		};
 	}
 
-	function setView( next ) {
+	// fromAnimation is set by animateView; any other change, such as a drag or pinch, stops a running animation
+	function setView( next, fromAnimation ) {
 		var size = getSize();
+
+		if ( !fromAnimation ) {
+			stopAnimation();
+		}
 		view = OSApp.SiteMap.clampView( next, size.width, size.height, Constants.maxZoom );
 		lastWidth = size.width;
 		image.css( "transform", "translate(" + view.x + "px, " + view.y + "px) scale(" + view.scale + ")" );
@@ -848,28 +857,80 @@ OSApp.SiteMap.createView = function() {
 		scheduleRender();
 	}
 
-	function resetView() {
-		setView( { scale: 1, x: 0, y: 0 } );
+	function stopAnimation() {
+		if ( animationFrame ) {
+			window.cancelAnimationFrame( animationFrame );
+			animationFrame = null;
+		}
 	}
 
-	function zoomBy( factor, px, py ) {
+	// Moves smoothly to a view. The zoom changes at a steady rate (geometrically) while the point at the
+	// center of the map moves to its new spot, so zooming into a point looks like flying toward it.
+	function animateView( next ) {
+		var size = getSize(),
+			width = size.width,
+			height = size.height,
+			start = view,
+			end = OSApp.SiteMap.clampView( next, width, height, Constants.maxZoom ),
+			center = function( v ) {
+				return { x: ( width / 2 - v.x ) / ( width * v.scale ), y: ( height / 2 - v.y ) / ( height * v.scale ) };
+			},
+			from = center( start ),
+			to = center( end ),
+			began = null,
+			reduceMotion = window.matchMedia && window.matchMedia( "(prefers-reduced-motion: reduce)" ).matches;
+
+		stopAnimation();
+		if ( !Constants.zoomDuration || reduceMotion || !width || !height ) {
+			setView( end );
+			return;
+		}
+
+		animationFrame = window.requestAnimationFrame( function step( now ) {
+			began = began === null ? now : began;
+
+			var t = Math.min( 1, ( now - began ) / Constants.zoomDuration ),
+				eased = 1 - Math.pow( 1 - t, 3 ),
+				scale = start.scale * Math.pow( end.scale / start.scale, eased ),
+				x = from.x + ( to.x - from.x ) * eased,
+				y = from.y + ( to.y - from.y ) * eased;
+
+			setView( t < 1 ? { scale: scale, x: width / 2 - x * width * scale, y: height / 2 - y * height * scale } : end, true );
+			animationFrame = t < 1 ? window.requestAnimationFrame( step ) : null;
+		} );
+	}
+
+	// animate moves there smoothly instead of jumping
+	function goToView( next, animate ) {
+		if ( animate ) {
+			animateView( next );
+		} else {
+			setView( next );
+		}
+	}
+
+	function resetView( animate ) {
+		goToView( { scale: 1, x: 0, y: 0 }, animate );
+	}
+
+	function zoomBy( factor, px, py, animate ) {
 		var size = getSize();
 		if ( px === undefined ) {
 			px = size.width / 2;
 			py = size.height / 2;
 		}
-		setView( OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, Constants.maxZoom ) );
+		goToView( OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, Constants.maxZoom ), animate );
 	}
 
 	// Zoom in and center on a map point
-	function zoomTo( pos, scale ) {
+	function zoomTo( pos, scale, animate ) {
 		var size = getSize();
 		scale = Math.min( Constants.maxZoom, scale );
-		setView( {
+		goToView( {
 			scale: scale,
 			x: size.width / 2 - pos.x * size.width * scale,
 			y: size.height / 2 - pos.y * size.height * scale
-		} );
+		}, animate );
 	}
 
 	function scheduleRender() {
@@ -1060,7 +1121,7 @@ OSApp.SiteMap.createView = function() {
 		zoomTo( {
 			x: ( Math.min.apply( null, xs ) + Math.max.apply( null, xs ) ) / 2,
 			y: ( Math.min.apply( null, ys ) + Math.max.apply( null, ys ) ) / 2
-		}, Math.max( scale, view.scale ) );
+		}, Math.max( scale, view.scale ), true );
 	}
 
 	// Lists every station in a group so one can be picked even when the pins overlap
@@ -1649,7 +1710,7 @@ OSApp.SiteMap.createView = function() {
 		if ( editing || $( event.target ).closest( ".site-map-pin, .site-map-controls, .site-map-empty-prompt" ).length ) {
 			return;
 		}
-		zoomBy( e.shiftKey ? 1 / Constants.zoomStep : Constants.zoomStep, e.clientX - rect.left, e.clientY - rect.top );
+		zoomBy( e.shiftKey ? 1 / Constants.zoomStep : Constants.zoomStep, e.clientX - rect.left, e.clientY - rect.top, true );
 		return false;
 	} );
 
@@ -1699,14 +1760,14 @@ OSApp.SiteMap.createView = function() {
 		switch ( e.key ) {
 			case "+":
 			case "=":
-				zoomBy( Constants.zoomStep );
+				zoomBy( Constants.zoomStep, undefined, undefined, true );
 				break;
 			case "-":
 			case "_":
-				zoomBy( 1 / Constants.zoomStep );
+				zoomBy( 1 / Constants.zoomStep, undefined, undefined, true );
 				break;
 			case "0":
-				resetView();
+				resetView( true );
 				break;
 			case "ArrowLeft":
 				setView( { scale: view.scale, x: view.x + size.width * step, y: view.y } );
@@ -1731,17 +1792,17 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	container.find( ".site-map-zoom-in" ).on( "click", function() {
-		zoomBy( Constants.zoomStep );
+		zoomBy( Constants.zoomStep, undefined, undefined, true );
 		return false;
 	} );
 
 	container.find( ".site-map-zoom-out" ).on( "click", function() {
-		zoomBy( 1 / Constants.zoomStep );
+		zoomBy( 1 / Constants.zoomStep, undefined, undefined, true );
 		return false;
 	} );
 
 	container.find( ".site-map-zoom-reset" ).on( "click", function() {
-		resetView();
+		resetView( true );
 		return false;
 	} );
 
@@ -1800,7 +1861,8 @@ OSApp.SiteMap.createView = function() {
 			setEditing( false );
 		}
 
-		// Forget any gesture in progress; its pointer events won't arrive while hidden
+		// Forget any gesture or animation in progress; its pointer events won't arrive while hidden
+		stopAnimation();
 		pointers = {};
 		gesture = null;
 		drag = null;

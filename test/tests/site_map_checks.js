@@ -46,6 +46,17 @@ function openHomeMap() {
 }
 
 describe("Site Map Checks", function () {
+	var zoomDuration = OSApp.SiteMap.Constants.zoomDuration;
+
+	// Zooms jump straight to their result in these tests unless a test turns the animation back on
+	before(function () {
+		OSApp.SiteMap.Constants.zoomDuration = 0;
+	});
+
+	after(function () {
+		OSApp.SiteMap.Constants.zoomDuration = zoomDuration;
+	});
+
 	// 1x1 transparent GIF
 	var testImage = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 	var siteName;
@@ -690,6 +701,48 @@ describe("Site Map Checks", function () {
 		}).finally(function () {
 			stub.restore();
 			page = null;
+		});
+	});
+
+	it("should animate zooming into a group of valves", function () {
+		var width;
+
+		OSApp.SiteMap.Constants.zoomDuration = 200;
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		return openHomeMap().then(function (page) {
+			width = page.find(".site-map-container").width();
+			OSApp.SiteMap.save(siteName, {
+				image: testImage,
+				pins: { 0: { x: 0.5, y: 0.5 }, 1: { x: 0.5 + 6 / width, y: 0.5 } }
+			});
+			return openHomeMap();
+		}).then(function (page) {
+			var image = page.find(".site-map-image-el")[0],
+				scaleOf = function () {
+					var match = image.style.transform.match(/scale\(([\d.]+)\)/);
+					return match ? Number(match[1]) : 1;
+				},
+				samples = [];
+
+			tap(page.find(".site-map-pin-group"));
+
+			// Partway through, the zoom is between the start and the end
+			return new Promise(function (resolve) {
+				setTimeout(function () {
+					samples.push(scaleOf());
+					setTimeout(function () {
+						samples.push(scaleOf());
+						resolve();
+					}, 300);
+				}, 80);
+			}).then(function () {
+				assert.isAbove(samples[0], 1);
+				assert.isBelow(samples[0], samples[1]);
+				assert.lengthOf(page.find(".site-map-pin"), 2);
+			});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.zoomDuration = 0;
 		});
 	});
 
