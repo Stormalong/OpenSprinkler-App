@@ -317,6 +317,78 @@ describe("Site Map Checks", function () {
 		});
 	});
 
+	it("should allow zooming in far enough to separate the closest pins", function () {
+		var limit = OSApp.SiteMap.Constants.maxZoomLimit,
+			far = { 0: { x: 0.1, y: 0.1 }, 1: { x: 0.9, y: 0.9 } },
+			close = { 0: { x: 0.5, y: 0.5 }, 1: { x: 0.502, y: 0.5 }, 2: { x: 0.1, y: 0.1 } },
+			scale;
+
+		// Pins that are already apart keep the normal limit
+		assert.equal(OSApp.SiteMap.getMaxZoom(far, 400, 400, 32), OSApp.SiteMap.Constants.maxZoom);
+		assert.equal(OSApp.SiteMap.getMaxZoom({}, 400, 400, 32), OSApp.SiteMap.Constants.maxZoom);
+
+		// On a phone-sized map these are under 1px apart, so 8x isn't enough
+		scale = OSApp.SiteMap.getMaxZoom(close, 400, 400, 32);
+		assert.isAbove(scale, OSApp.SiteMap.Constants.maxZoom);
+		assert.isAtMost(scale, limit);
+		assert.lengthOf(OSApp.SiteMap.clusterPins(close, 400 * scale, 400 * scale, 32), 3);
+
+		// Pins at exactly the same spot can never separate, so they don't raise the limit for the others
+		close[3] = { x: 0.1, y: 0.1 };
+		assert.equal(OSApp.SiteMap.getMaxZoom(close, 400, 400, 32), scale);
+
+		// Never beyond the hard limit
+		assert.equal(OSApp.SiteMap.getMaxZoom({ 0: { x: 0.5, y: 0.5 }, 1: { x: 0.5001, y: 0.5 } }, 400, 400, 32), limit);
+	});
+
+	it("should separate pins too close for the normal zoom limit after tapping their group", function (done) {
+		var width;
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {} });
+
+		showSiteMap(function (err) {
+			if (err) {
+				done(err);
+				return;
+			}
+
+			// 2px apart: still grouped at 8x (16px), so separating them needs more zoom than the normal limit
+			OSApp.SiteMap.save(siteName, {
+				image: testImage,
+				pins: { 0: { x: 0.5, y: 0.5 }, 1: { x: 0.5 + 2 / width, y: 0.5 } }
+			});
+			showSiteMap(function (err) {
+				$(".site-map-picker").popup("close");
+				done(err);
+			}, function (page) {
+				tap(page.find(".site-map-pin-group"));
+
+				return nextFrame().then(function () {
+					assert.lengthOf($(".site-map-picker a[data-sid]"), 0);
+					assert.lengthOf(page.find(".site-map-pin-group"), 0);
+					assert.lengthOf(page.find(".site-map-pin"), 2);
+					assert.isAbove(scaleOf(page), OSApp.SiteMap.Constants.maxZoom);
+				});
+			});
+		}, function (page) {
+			width = page.find(".site-map-container").width();
+			assert.isAbove(width, 0);
+		});
+	});
+
+	it("should let the zoom buttons go past the normal limit when pins need it", function () {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.5, y: 0.5 }, 1: { x: 0.5001, y: 0.5 } } });
+
+		return openHomeMap().then(function (page) {
+			for (var i = 0; i < 10; i++) {
+				page.find(".site-map-zoom-in").trigger("click");
+			}
+			return nextFrame().then(function () {
+				assert.equal(scaleOf(page), OSApp.SiteMap.Constants.maxZoomLimit);
+			});
+		});
+	});
+
 	it("should pan and zoom with the mouse and keyboard", function (done) {
 		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.5, y: 0.5 } } });
 

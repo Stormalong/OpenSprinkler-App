@@ -25,7 +25,10 @@ OSApp.SiteMap.Constants = {
 
 	// Pins closer than this many pixels on screen are grouped into one marker
 	clusterRadius: 32,
+
+	// Normal zoom limit, which can rise up to maxZoomLimit so pins that are very close together can still be told apart
 	maxZoom: 8,
+	maxZoomLimit: 64,
 	minMapHeight: 200,
 	zoomStep: 2,
 
@@ -539,6 +542,30 @@ OSApp.SiteMap.getSeparatingScale = function( pins, width, height, radius, maxZoo
 	return OSApp.SiteMap.clusterPins( pins, width * maxZoom, height * maxZoom, radius ).length === sids.length ? maxZoom : null;
 };
 
+// How far the map may zoom in: the normal limit, or further if that's what it takes to separate the closest pins.
+// Pins at exactly the same spot can never be separated, so they are counted once.
+OSApp.SiteMap.getMaxZoom = function( pins, width, height, radius ) {
+	var Constants = OSApp.SiteMap.Constants,
+		distinct = {},
+		seen = {},
+		scale;
+
+	$.each( pins, function( sid, pos ) {
+		var key = pos.x + "," + pos.y;
+		if ( !seen[ key ] ) {
+			seen[ key ] = true;
+			distinct[ sid ] = pos;
+		}
+	} );
+
+	if ( Object.keys( distinct ).length < 2 || !( width > 0 && height > 0 ) ) {
+		return Constants.maxZoom;
+	}
+
+	scale = OSApp.SiteMap.getSeparatingScale( distinct, width, height, radius, Constants.maxZoomLimit );
+	return scale === null ? Constants.maxZoomLimit : Math.max( Constants.maxZoom, scale );
+};
+
 // A view is { scale, x, y }: the image is drawn at scale times its fitted size, with its top-left corner offset x, y pixels
 // overscrollRight lets the map be dragged that many pixels further left than its right edge, so whatever
 // is under the buttons along the right side can be moved out from under them, even at normal zoom
@@ -695,6 +722,7 @@ OSApp.SiteMap.createView = function() {
 		editing = false,
 		placingSid = null,
 		view = { scale: 1, x: 0, y: 0 },
+		maxZoomCache = {},
 		lastWidth = 0,
 		drag = null,
 		pointers = {},
@@ -1017,7 +1045,7 @@ OSApp.SiteMap.createView = function() {
 		if ( !fromAnimation ) {
 			stopAnimation();
 		}
-		view = OSApp.SiteMap.clampView( next, size.width, size.height, Constants.maxZoom, getOverscroll() );
+		view = OSApp.SiteMap.clampView( next, size.width, size.height, getMaxZoom(), getOverscroll() );
 		lastWidth = size.width;
 		image.css( "transform", "translate(" + view.x + "px, " + view.y + "px) scale(" + view.scale + ")" );
 		container.toggleClass( "site-map-zoomed", view.scale > 1 );
@@ -1042,7 +1070,7 @@ OSApp.SiteMap.createView = function() {
 			width = size.width,
 			height = size.height,
 			start = view,
-			end = OSApp.SiteMap.clampView( next, width, height, Constants.maxZoom ),
+			end = OSApp.SiteMap.clampView( next, width, height, getMaxZoom() ),
 			center = function( v ) {
 				return { x: ( width / 2 - v.x ) / ( width * v.scale ), y: ( height / 2 - v.y ) / ( height * v.scale ) };
 			},
@@ -1095,7 +1123,7 @@ OSApp.SiteMap.createView = function() {
 			px = size.width / 2;
 			py = size.height / 2;
 		}
-		next = OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, Constants.maxZoom );
+		next = OSApp.SiteMap.zoomAt( view, factor, px, py, size.width, size.height, getMaxZoom() );
 		if ( moving ) {
 			setView( next, false, true );
 		} else {
@@ -1106,7 +1134,7 @@ OSApp.SiteMap.createView = function() {
 	// Zoom in and center on a map point
 	function zoomTo( pos, scale, animate ) {
 		var size = getSize();
-		scale = Math.min( Constants.maxZoom, scale );
+		scale = Math.min( getMaxZoom(), scale );
 		goToView( {
 			scale: scale,
 			x: size.width / 2 - pos.x * size.width * scale,
@@ -1144,18 +1172,36 @@ OSApp.SiteMap.createView = function() {
 		} );
 	}
 
-	function renderPins() {
+	// Pins of stations that still exist
+	function getVisiblePins() {
 		var stationCount = getStationNames().length,
-			size = getSize(),
 			visible = {};
 
-		// Skip pins for stations that no longer exist
 		$.each( map.pins, function( sid, pos ) {
 			sid = parseInt( sid, 10 );
 			if ( !isNaN( sid ) && sid < stationCount ) {
 				visible[ sid ] = pos;
 			}
 		} );
+		return visible;
+	}
+
+	// Recomputed only when the map size or the pins change, since it's needed on every frame of a pan or zoom
+	function getMaxZoom() {
+		var size = getSize(),
+			pins = getVisiblePins(),
+			key = size.width + "x" + size.height + ":" + JSON.stringify( pins );
+
+		if ( maxZoomCache.key !== key ) {
+			maxZoomCache = { key: key, value: OSApp.SiteMap.getMaxZoom( pins, size.width, size.height, Constants.clusterRadius ) };
+		}
+		return maxZoomCache.value;
+	}
+
+	function renderPins() {
+		var stationCount = getStationNames().length,
+			size = getSize(),
+			visible = getVisiblePins();
 
 		pinLayer.empty();
 
@@ -1361,7 +1407,7 @@ OSApp.SiteMap.createView = function() {
 		sids.forEach( function( sid ) {
 			pins[ sid ] = map.pins[ sid ];
 		} );
-		scale = OSApp.SiteMap.getSeparatingScale( pins, size.width, size.height, Constants.clusterRadius, Constants.maxZoom );
+		scale = OSApp.SiteMap.getSeparatingScale( pins, size.width, size.height, Constants.clusterRadius, getMaxZoom() );
 
 		if ( scale === null ) {
 			showGroupList( sids );
@@ -1918,7 +1964,7 @@ OSApp.SiteMap.createView = function() {
 
 			if ( oldDistance > 0 ) {
 				next = OSApp.SiteMap.zoomAt( view, Math.hypot( current.x - other.x, current.y - other.y ) / oldDistance,
-					oldMid.x - rect.left, oldMid.y - rect.top, size.width, size.height, Constants.maxZoom );
+					oldMid.x - rect.left, oldMid.y - rect.top, size.width, size.height, getMaxZoom() );
 
 				// Pan with the midpoint so the map follows both fingers
 				next.x += ( current.x + other.x ) / 2 - oldMid.x;
