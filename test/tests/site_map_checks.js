@@ -408,6 +408,12 @@ describe("Site Map Checks", function () {
 		});
 	}
 
+	// Edits are kept until Done is tapped; this taps it and resolves with what was saved
+	function doneEditing(page) {
+		page.find(".site-map-edit").trigger("click");
+		return storedMap();
+	}
+
 	it("should encode drawings as one line per run and drop runs for missing stations", function () {
 		var drawings = {
 				2: [{ type: "drip", pts: [[0.1, 0.2], [0.3, 0.4]] }],
@@ -543,14 +549,13 @@ describe("Site Map Checks", function () {
 
 				page.find(".site-map-draw-done").trigger("click");
 				assert.isFalse(page.hasClass("site-map-drawing-mode"));
-				return storedMap();
+				return doneEditing(page);
 			}).then(function (map) {
 				var pts = map.drawings[0][0].pts;
 				assert.equal(map.drawings[0][0].type, "heads");
 				assert.lengthOf(pts, 3);
 				assert.deepEqual(pts[0], [0.2, 0.5]);
 				assert.closeTo(pts[2][0], 0.6, 0.01);
-				page.find(".site-map-edit").trigger("click");
 			});
 		});
 	});
@@ -585,19 +590,19 @@ describe("Site Map Checks", function () {
 			pointer(container, "pointermove", rect.left + 0.5 * rect.width, rect.top + 0.4 * rect.height);
 			pointer(container, "pointerup", rect.left + 0.5 * rect.width, rect.top + 0.4 * rect.height);
 
-			return storedMap().then(function (map) {
+			return doneEditing(page).then(function (map) {
 				assert.closeTo(map.drawings[1][0].pts[1][1], 0.4, 0.01);
 
 				// Tapping the middle of the moved line opens its actions
+				page.find(".site-map-edit").trigger("click");
 				tapMap(page, 0.3, 0.25);
 				return chooseAction("Add points");
 			}).then(function () {
 				tapMap(page, 0.7, 0.7);
 				page.find(".site-map-draw-done").trigger("click");
-				return storedMap();
+				return doneEditing(page);
 			}).then(function (map) {
 				assert.lengthOf(map.drawings[1][0].pts, 3);
-				page.find(".site-map-edit").trigger("click");
 			});
 		});
 	});
@@ -639,11 +644,12 @@ describe("Site Map Checks", function () {
 			});
 			page.find(".site-map-edit").trigger("click");
 			tap(page.find(".site-map-pin"));
-			return chooseAction("Remove from map").then(storedMap).then(function (map) {
+			return chooseAction("Remove from map").then(function () {
+				assert.lengthOf(page.find(".site-map-run"), 0);
+				return doneEditing(page);
+			}).then(function (map) {
 				assert.deepEqual(map.pins, {});
 				assert.deepEqual(map.drawings, {});
-				assert.lengthOf(page.find(".site-map-run"), 0);
-				page.find(".site-map-edit").trigger("click");
 			});
 		});
 	});
@@ -884,10 +890,13 @@ describe("Site Map Checks", function () {
 		showSiteMap(done, function (page) {
 			page.find(".site-map-edit").trigger("click");
 			tapMap(page, 0.25, 0.6);
-			return chooseAction("Remove last point").then(storedMap).then(function (map) {
+			return chooseAction("Remove last point").then(function () {
+				return doneEditing(page);
+			}).then(function (map) {
 				assert.deepEqual(map.drawings[1][0].pts, [[0.1, 0.6], [0.4, 0.6]]);
 
 				// A drip line can't go below two points, so the action is no longer offered
+				page.find(".site-map-edit").trigger("click");
 				tapMap(page, 0.25, 0.6);
 				return waitFor(function () {
 					return $(".ui-popup-active .site-map-picker a").length > 0;
@@ -1052,6 +1061,125 @@ describe("Site Map Checks", function () {
 			});
 		});
 		assert.isTrue(hidden);
+	});
+
+	it("should keep edits until Done and then save them", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			assert.isTrue(page.find(".site-map-cancel").is(":visible"));
+			tap(page.find(".site-map-pin"));
+			return chooseAction("Add drip line").then(function () {
+				tapMap(page, 0.3, 0.5);
+				tapMap(page, 0.6, 0.5);
+				page.find(".site-map-draw-done").trigger("click");
+				return storedMap();
+			}).then(function (map) {
+				// Nothing is saved while still editing
+				assert.deepEqual(map.drawings, {});
+				return doneEditing(page);
+			}).then(function (map) {
+				assert.lengthOf(map.drawings[0], 1);
+				assert.isFalse(page.find(".site-map-cancel").is(":visible"));
+			});
+		});
+	});
+
+	it("should put everything back when an edit is cancelled", function (done) {
+		var original = {
+			image: testImage,
+			pins: { 0: { x: 0.2, y: 0.5 }, 1: { x: 0.7, y: 0.5 } },
+			drawings: { 1: [{ type: "drip", pts: [[0.7, 0.5], [0.7, 0.8]] }] }
+		};
+		OSApp.SiteMap.save(siteName, original);
+
+		showSiteMap(done, function (page) {
+			var container = page.find(".site-map-container"),
+				rect = container[0].getBoundingClientRect(),
+				confirm = sinon.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes) {
+					yes();
+				});
+
+			page.find(".site-map-edit").trigger("click");
+
+			// Move a point, remove a valve with its drawings, and add a head run
+			pointer(page.find(".site-map-handle")[1], "pointerdown", rect.left + 0.7 * rect.width, rect.top + 0.8 * rect.height);
+			pointer(container, "pointermove", rect.left + 0.9 * rect.width, rect.top + 0.9 * rect.height);
+			pointer(container, "pointerup", rect.left + 0.9 * rect.width, rect.top + 0.9 * rect.height);
+			tap(page.find(".site-map-pin[data-sids='1']"));
+			return chooseAction("Remove from map").then(function () {
+				confirm.restore();
+				tap(page.find(".site-map-pin[data-sids='0']"));
+				return chooseAction("Add heads");
+			}).then(function () {
+				tapMap(page, 0.3, 0.5);
+				page.find(".site-map-draw-done").trigger("click");
+				assert.lengthOf(page.find(".site-map-pin"), 1);
+
+				page.find(".site-map-cancel").trigger("click");
+				assert.isFalse(page.hasClass("site-map-editing"));
+
+				// Back on screen as it was, and nothing was saved
+				assert.lengthOf(page.find(".site-map-pin"), 2);
+				assert.lengthOf(page.find(".site-map-run"), 1);
+				assert.lengthOf(page.find(".site-map-run-heads"), 0);
+				return storedMap();
+			}).then(function (map) {
+				assert.deepEqual(map.pins, original.pins);
+				assert.deepEqual(map.drawings, original.drawings);
+			}).finally(function () {
+				confirm.restore();
+			});
+		});
+	});
+
+	it("should discard a drawing in progress when an edit is cancelled", function (done) {
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {} });
+
+		showSiteMap(done, function (page) {
+			page.find(".site-map-edit").trigger("click");
+			tap(page.find(".site-map-pin"));
+			return chooseAction("Add heads").then(function () {
+				tapMap(page, 0.3, 0.5);
+				tapMap(page, 0.4, 0.5);
+				page.find(".site-map-cancel").trigger("click");
+				assert.isFalse(page.hasClass("site-map-drawing-mode"));
+				assert.lengthOf(page.find(".site-map-run"), 0);
+				return storedMap();
+			}).then(function (map) {
+				assert.deepEqual(map.drawings, {});
+			});
+		});
+	});
+
+	it("should keep a new image until Done and restore the old one on cancel", function (done) {
+		var picture = sinon.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback("/9j/new");
+			});
+
+		OSApp.SiteMap.save(siteName, { image: testImage, pins: {}, drawings: {} });
+		showSiteMap(function (error) {
+			picture.restore();
+			done(error);
+		}, function (page) {
+			var img = page.find(".site-map-image-el");
+
+			page.find(".site-map-edit").trigger("click");
+			page.find(".site-map-image").trigger("click");
+			assert.equal(img.attr("src"), "data:image/jpeg;base64,/9j/new");
+			page.find(".site-map-cancel").trigger("click");
+			assert.equal(img.attr("src"), testImage);
+			return storedMap().then(function (map) {
+				assert.equal(map.image, testImage);
+
+				page.find(".site-map-edit").trigger("click");
+				page.find(".site-map-image").trigger("click");
+				return doneEditing(page);
+			}).then(function (map) {
+				assert.equal(map.image, "data:image/jpeg;base64,/9j/new");
+			});
+		});
 	});
 
 	it("should not list the site map in the menu", function () {
@@ -1472,6 +1600,52 @@ describe("Site Map Controller Storage", function () {
 					}, 600);
 				}, 600);
 			}, 300);
+		});
+	});
+
+	it("should upload nothing until Done, and nothing at all if the edit is cancelled", function () {
+		this.timeout(6000);
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+
+		return openHomeMap().then(function (page) {
+			var container = page.find(".site-map-container"),
+				rect = container[0].getBoundingClientRect(),
+				pointer = function (element, type, x, y) {
+					element.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: "mouse", button: 0 }));
+				},
+				drag = function (toX) {
+					var handle = page.find(".site-map-pin")[0], r = handle.getBoundingClientRect();
+					pointer(handle, "pointerdown", r.left + r.width / 2, r.top + r.height / 2);
+					pointer(handle, "pointermove", rect.left + toX * rect.width, rect.top + rect.height / 2);
+					pointer(handle, "pointerup", rect.left + toX * rect.width, rect.top + rect.height / 2);
+				},
+				wait = function (ms) {
+					return new Promise(function (resolve) {
+						setTimeout(resolve, ms);
+					});
+				};
+
+			requests = [];
+			page.find(".site-map-edit").trigger("click");
+			drag(0.2);
+			return wait(OSApp.SiteMap.Constants.pinSaveDelay + 200).then(function () {
+				assert.lengthOf(requestsTo("/cmp"), 0);
+				page.find(".site-map-cancel").trigger("click");
+				return wait(OSApp.SiteMap.Constants.pinSaveDelay + 200);
+			}).then(function () {
+				assert.lengthOf(requestsTo("/cmp"), 0);
+				assert.deepEqual(remote.pins, { 0: [5000, 5000] });
+
+				page.find(".site-map-edit").trigger("click");
+				drag(0.2);
+				page.find(".site-map-edit").trigger("click");
+				return wait(300);
+			}).then(function () {
+				assert.lengthOf(requestsTo("/cmp"), 1);
+				assert.isBelow(remote.pins[0][0], 3000);
+			});
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
 		});
 	});
 

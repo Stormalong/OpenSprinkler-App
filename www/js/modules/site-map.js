@@ -637,6 +637,7 @@ OSApp.SiteMap.createView = function() {
 					<div class="site-map-controls">
 						<div class="site-map-toolbar">
 							<a href="#" title="${OSApp.Language._( "Edit" )}" class="site-map-edit ui-btn ui-btn-icon-notext ui-icon-edit ui-corner-all ui-mini">${OSApp.Language._( "Edit" )}</a>
+							<a href="#" title="${OSApp.Language._( "Cancel changes" )}" class="site-map-cancel ui-btn ui-btn-icon-notext ui-icon-back ui-corner-all ui-mini">${OSApp.Language._( "Cancel changes" )}</a>
 							<a href="#" title="${OSApp.Language._( "Set Image" )}" class="site-map-image ui-btn ui-btn-icon-notext ui-icon-camera ui-corner-all ui-mini">${OSApp.Language._( "Set Image" )}</a>
 							<a href="#" title="${OSApp.Language._( "Clear" )}" class="site-map-clear ui-btn ui-btn-icon-notext ui-icon-delete ui-corner-all ui-mini red">${OSApp.Language._( "Clear" )}</a>
 						</div>
@@ -660,7 +661,10 @@ OSApp.SiteMap.createView = function() {
 		map = { pins: {}, drawings: {} },
 		source = "local",
 		pinSaveTimer = null,
-		dirty = { pins: false, drawings: false },
+		dirty = { pins: false, drawings: false, image: false },
+
+		// The map as it was when editing started, restored if the edit is cancelled
+		editSnapshot = null,
 
 		// The run being drawn: { sid, run, isNew, original }
 		drawing = null,
@@ -679,11 +683,15 @@ OSApp.SiteMap.createView = function() {
 		animationFrame = null,
 		renderQueued = false;
 
-	// Saves changes to the pins and/or drawings; on the controller they are batched so dragging sends one request
+	// Records changes to the pins and/or drawings. While editing they are kept until Done; otherwise they are
+	// saved right away, and on the controller they are batched so dragging sends one request
 	function persist( kinds ) {
 		( kinds || [ "pins" ] ).forEach( function( kind ) {
 			dirty[ kind ] = true;
 		} );
+		if ( editing ) {
+			return;
+		}
 		OSApp.SiteMap.save( siteName, map, source === "controller" );
 		if ( source === "controller" ) {
 			clearTimeout( pinSaveTimer );
@@ -697,7 +705,15 @@ OSApp.SiteMap.createView = function() {
 
 		clearTimeout( pinSaveTimer );
 		pinSaveTimer = null;
-		dirty = { pins: false, drawings: false };
+		dirty = { pins: false, drawings: false, image: false };
+		if ( changed.image && map.image ) {
+			request = request.then( function() {
+				showUploadProgress( 0 );
+				return OSApp.SiteMap.uploadImage( map.image, showUploadProgress ).always( function() {
+					$.mobile.loading( "hide" );
+				} );
+			} );
+		}
 		if ( changed.pins ) {
 			request = request.then( function() {
 				return OSApp.SiteMap.uploadPins( map.pins );
@@ -741,6 +757,39 @@ OSApp.SiteMap.createView = function() {
 		renderPins();
 	}
 
+	function endEditSession( discard ) {
+		var snapshot = editSnapshot;
+
+		editSnapshot = null;
+		if ( discard && snapshot ) {
+			if ( snapshot.image !== map.image ) {
+				image.attr( "src", snapshot.image || "" );
+			}
+			map.image = snapshot.image;
+			map.pins = snapshot.pins;
+			map.drawings = snapshot.drawings;
+			dirty = { pins: false, drawings: false, image: false };
+			fitMap();
+			return;
+		}
+		if ( !dirty.pins && !dirty.drawings && !dirty.image ) {
+			return;
+		}
+		if ( source === "controller" ) {
+			OSApp.SiteMap.save( siteName, map, true );
+			uploadChanges();
+			return;
+		}
+		dirty = { pins: false, drawings: false, image: false };
+		if ( !OSApp.SiteMap.save( siteName, map ) && snapshot ) {
+
+			// Not enough room on this device for the new image; keep the rest of the changes
+			map.image = snapshot.image;
+			image.attr( "src", map.image || "" );
+			OSApp.SiteMap.save( siteName, map );
+		}
+	}
+
 	// Picks up changes saved from other devices
 	function checkForRemoteChanges() {
 		var rev = OSApp.currentSession.controller?.options?.smap;
@@ -756,14 +805,36 @@ OSApp.SiteMap.createView = function() {
 		} ) );
 	}
 
-	function setEditing( value ) {
+	function showUploadProgress( fraction ) {
+		$.mobile.loading( "show", {
+			text: OSApp.Language._( "Uploading map" ) + " " + Math.round( fraction * 100 ) + "%",
+			textVisible: true
+		} );
+	}
+
+	function copyMap( from ) {
+		return { image: from.image, pins: $.extend( true, {}, from.pins ), drawings: $.extend( true, {}, from.drawings ) };
+	}
+
+	// Starts or ends editing. Ending saves the changes made since editing started, unless discard is set,
+	// which puts the map back the way it was.
+	function setEditing( value, discard ) {
 		if ( drawing ) {
-			finishDrawing();
+			if ( discard ) {
+				cancelDrawing();
+			} else {
+				finishDrawing();
+			}
+		}
+		if ( value && !editing ) {
+			editSnapshot = copyMap( map );
+		} else if ( !value && editing ) {
+			endEditSession( discard );
 		}
 		editing = value;
 		placingSid = null;
 		page.toggleClass( "site-map-editing", editing );
-		page.find( ".site-map-image, .site-map-clear" ).toggle( editing );
+		page.find( ".site-map-image, .site-map-clear, .site-map-cancel" ).toggle( editing );
 		page.find( ".site-map-edit" )
 			.toggleClass( "ui-icon-edit", !editing )
 			.toggleClass( "ui-icon-check", editing )
@@ -1342,12 +1413,16 @@ OSApp.SiteMap.createView = function() {
 					setEditing( !previous && !!map.image );
 					fitMap();
 				},
-				showProgress = function( fraction ) {
-					$.mobile.loading( "show", {
-						text: OSApp.Language._( "Uploading map" ) + " " + Math.round( fraction * 100 ) + "%",
-						textVisible: true
-					} );
-				};
+				showProgress = showUploadProgress;
+
+			// A new image while editing is part of the edit: saved with Done, undone by Cancel
+			if ( editing ) {
+				map.image = dataURL;
+				dirty.image = true;
+				image.attr( "src", map.image );
+				fitMap();
+				return;
+			}
 
 			if ( !onController ) {
 				map.image = dataURL;
@@ -1377,7 +1452,8 @@ OSApp.SiteMap.createView = function() {
 					clearTimeout( pinSaveTimer );
 					pinSaveTimer = null;
 					map = { pins: {}, drawings: {} };
-					dirty = { pins: false, drawings: false };
+					dirty = { pins: false, drawings: false, image: false };
+					editSnapshot = null;
 					OSApp.Storage.remove( OSApp.SiteMap.getStorageKey( siteName ) );
 					image.attr( "src", "" );
 					setEditing( false );
@@ -1875,6 +1951,13 @@ OSApp.SiteMap.createView = function() {
 
 	page.find( ".site-map-edit" ).on( "click", function() {
 		setEditing( !editing );
+		return false;
+	} );
+
+	page.find( ".site-map-cancel" ).on( "click", function() {
+		if ( editing ) {
+			setEditing( false, true );
+		}
 		return false;
 	} );
 
