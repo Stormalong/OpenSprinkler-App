@@ -672,6 +672,11 @@ OSApp.SiteMap.restoreBackupData = function( backup, done ) {
 		OSApp.SiteMap.uploadMap( siteName, map ).then( function() {
 			done( true );
 		}, function() {
+
+			// Part of it may be on the controller already, so the backup is kept here, marked to be sent again
+			// when the map is shown, rather than replaced by what the controller has
+			map.pending = true;
+			OSApp.SiteMap.save( siteName, map, true );
 			done( false );
 		} );
 	} );
@@ -957,6 +962,10 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 			return Relay.request( "/mxd?pw=", "arraybuffer-response" ).then( function( response ) {
 				var part;
 
+				// Another site was picked while it downloaded; the next step stops
+				if ( OSApp.currentSession.controller !== controller ) {
+					return $.Deferred().reject( { status: 0, statusText: "stale" } );
+				}
 				if ( /json/i.test( response.headers.get( "Content-Type" ) || "" ) ) {
 					return $.Deferred().reject( { status: 0, statusText: "batch" } );
 				}
@@ -1430,6 +1439,9 @@ OSApp.SiteMap.createView = function() {
 		// Counts edit sessions, so a save that waits on the controller can tell editing started again meanwhile
 		editSession = 0,
 
+		// The snapshot of an edit whose check for changes made elsewhere didn't get through, to check again
+		checkBeforeSave = null,
+
 		// The run being drawn: { sid, run, isNew, original }
 		drawing = null,
 
@@ -1536,6 +1548,9 @@ OSApp.SiteMap.createView = function() {
 	// controller refused it, the map was closed, or another site was picked. dirty.all replaces the whole map.
 	function uploadChanges() {
 		var changed = dirty,
+
+			// What is sent is the map as it is now, not an edit started while it is being sent
+			saved = copyMap( map ),
 			retrying = uploadFailed,
 			controller = loadedController,
 			request = $.Deferred().resolve().promise(),
@@ -1566,26 +1581,29 @@ OSApp.SiteMap.createView = function() {
 		uploading = changed;
 		if ( changed.all ) {
 			step( "all", withProgress( function() {
-				return OSApp.SiteMap.uploadMap( siteName, map, showUploadProgress ).then( function( uploaded ) {
+				return OSApp.SiteMap.uploadMap( siteName, saved, showUploadProgress ).then( function( uploaded ) {
+					if ( editing ) {
+						return;
+					}
 					map.image = uploaded.image;
 					map.pins = uploaded.pins;
 					map.drawings = uploaded.drawings;
 				} );
 			} ) );
 		} else {
-			if ( changed.image && map.image ) {
+			if ( changed.image && saved.image ) {
 				step( "image", withProgress( function() {
-					return OSApp.SiteMap.storeImage( map.image, map.deviceImage, showUploadProgress );
+					return OSApp.SiteMap.storeImage( saved.image, saved.deviceImage, showUploadProgress );
 				} ) );
 			}
 			if ( changed.pins ) {
 				step( "pins", function() {
-					return OSApp.SiteMap.uploadPins( map.pins );
+					return OSApp.SiteMap.uploadPins( saved.pins );
 				} );
 			}
 			if ( changed.drawings ) {
 				step( "drawings", function() {
-					return OSApp.SiteMap.uploadDrawings( map.drawings );
+					return OSApp.SiteMap.uploadDrawings( saved.drawings );
 				} );
 			}
 		}
@@ -1643,6 +1661,18 @@ OSApp.SiteMap.createView = function() {
 	function retryChanges() {
 		pinSaveTimer = null;
 		if ( !editing ) {
+			sendPending();
+		}
+	}
+
+	// Sends changes waiting to be sent, first checking for changes made elsewhere if that check didn't get through
+	function sendPending() {
+		var snapshot = checkBeforeSave;
+
+		checkBeforeSave = null;
+		if ( snapshot ) {
+			saveUnlessChangedElsewhere( snapshot );
+		} else {
 			uploadChanges();
 		}
 	}
@@ -1674,6 +1704,9 @@ OSApp.SiteMap.createView = function() {
 	// Records the controller revision matching what is on screen, so the cached image stays valid
 	function refreshRevision() {
 		return OSApp.SiteMap.fetchRemote().then( function( remote ) {
+			if ( editing && editSnapshot && editSnapshot.rev === map.rev ) {
+				editSnapshot.rev = remote.rev;
+			}
 			map.rev = remote.rev;
 			saveCache();
 		} );
@@ -1813,7 +1846,24 @@ OSApp.SiteMap.createView = function() {
 				}
 			} );
 			return decided.promise();
-		}, save ) );
+		}, function( error ) {
+			if ( restarted() ) {
+				return;
+			}
+			if ( startRev === undefined ) {
+				return save();
+			}
+
+			// Without the check this could overwrite another device's changes, so the edit stays pending and the
+			// check is tried again, like a save that didn't go through
+			if ( error && error.status === 401 ) {
+				return;
+			}
+			checkBeforeSave = snapshot;
+			OSApp.Errors.showError( OSApp.Language._( "Network Error" ) );
+			clearTimeout( pinSaveTimer );
+			pinSaveTimer = active ? setTimeout( retryChanges, Constants.retryDelay ) : null;
+		} ) );
 	}
 
 	// Picks up changes saved from other devices
@@ -2901,7 +2951,16 @@ OSApp.SiteMap.createView = function() {
 					clearLocal();
 					return;
 				}
+				var controller = loadedController,
+					clearedSite = siteName;
+
 				track( OSApp.SiteMap.deleteRemote().then( function() {
+
+					// Another site was picked meanwhile: only the cleared site's copy goes
+					if ( OSApp.currentSession.controller !== controller ) {
+						OSApp.Storage.remove( OSApp.SiteMap.getStorageKey( clearedSite ) );
+						return;
+					}
 					clearLocal();
 					return refreshRevision();
 				} ) );
@@ -3485,7 +3544,9 @@ OSApp.SiteMap.createView = function() {
 
 		// Send any changes still waiting to be saved
 		if ( pinSaveTimer ) {
-			uploadChanges();
+			clearTimeout( pinSaveTimer );
+			pinSaveTimer = null;
+			sendPending();
 		}
 		$( "html" ).off( "datarefresh.sitemap showdisabled.sitemap sitemaprename.sitemap" );
 		$( window ).off( "resize.sitemap" );

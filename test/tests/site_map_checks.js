@@ -3715,6 +3715,125 @@ describe("Site Map Controller Storage", function () {
 		}
 	});
 
+	// Starts editing and drags the first valve to x (0 to 1 across the map), leaving the edit open
+	function editAndMove(page, x) {
+		var rect = page.find(".site-map-container")[0].getBoundingClientRect(),
+			event = function (element, type, px, py) {
+				element.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: px, clientY: py, pointerId: 1, pointerType: "mouse", button: 0 }));
+			},
+			handle, r;
+
+		page.find(".site-map-edit").trigger("click");
+		handle = page.find(".site-map-pin")[0];
+		r = handle.getBoundingClientRect();
+		event(handle, "pointerdown", r.left + r.width / 2, r.top + r.height / 2);
+		event(handle, "pointermove", rect.left + x * rect.width, rect.top + rect.height / 2);
+		event(handle, "pointerup", rect.left + x * rect.width, rect.top + rect.height / 2);
+	}
+
+	it("should send what was saved with Done, not an edit started while it was being sent", function () {
+		this.timeout(8000);
+		var retryDelay = OSApp.SiteMap.Constants.retryDelay;
+
+		OSApp.SiteMap.Constants.retryDelay = 500;
+		sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+			callback(jpeg("#d93").split(",")[1]);
+		});
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			// The first edit has a new image, which is slow to upload, and a moved valve
+			editAndMove(page, 0.2);
+			page.find(".site-map-image").trigger("click");
+			remote.holdNext = "/um";
+			page.find(".site-map-edit").trigger("click");
+			return wait(100).then(function () {
+				editAndMove(page, 0.8);
+				remote.release();
+				return wait(300);
+			}).then(function () {
+				assert.isBelow(remote.pins[0][0], 3000);
+				page.find(".site-map-cancel").trigger("click");
+			});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.retryDelay = retryDelay;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should check again for changes from other devices when the check fails, instead of saving anyway", function () {
+		this.timeout(8000);
+		var retryDelay = OSApp.SiteMap.Constants.retryDelay,
+			confirm = sandbox.stub(OSApp.UIDom, "areYouSure"),
+			changed = false;
+
+		OSApp.SiteMap.Constants.retryDelay = 500;
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			// The check doesn't get through, and meanwhile another device saves
+			remote.fail = { "/jm": 1 };
+			remote.after = function (path) {
+				if (path === "/jm" && !changed) {
+					changed = true;
+					remote.rev++;
+				}
+			};
+			return editAndSave(page);
+		}).then(function () {
+			assert.lengthOf(requestsTo("/cmp"), 0);
+			return waitFor(function () {
+				return confirm.called;
+			});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.retryDelay = retryDelay;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should keep a backup that couldn't be restored to the controller, to send again", function () {
+		installController({ rev: 3, pins: { 1: [1000, 1000] } });
+		remote.fail = { "/cmp": 1 };
+
+		return new Promise(function (resolve) {
+			OSApp.SiteMap.restoreBackupData({ pins: { 0: { x: 0.5, y: 0.5 } } }, resolve);
+		}).then(function (restored) {
+			assert.isFalse(restored);
+			return cachedMap(siteName);
+		}).then(function (cached) {
+			assert.isTrue(cached.pending);
+			assert.deepEqual(cached.pins, { 0: { x: 0.5, y: 0.5 } });
+		});
+	});
+
+	it("should not clear the map of a site picked while clearing", function () {
+		this.timeout(6000);
+		var other = { pins: { 1: { x: 0.1, y: 0.1 } }, drawings: {}, image: jpeg("#123"), rev: 6 },
+			restore, switchedAt;
+
+		sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes) {
+			yes();
+		});
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			remote.after = function (path) {
+				if (path === "/dm") {
+					restore = switchController({ rev: 6 }, "Other Controller");
+					OSApp.SiteMap.save("Other Controller", other);
+					switchedAt = requests.length;
+				}
+			};
+			page.find(".site-map-clear").trigger("click");
+			return wait(300);
+		}).then(function () {
+			assert.lengthOf(requests.slice(switchedAt), 0);
+			return cachedMap("Other Controller");
+		}).then(function (cached) {
+			assert.equal(cached.image, other.image);
+		}).finally(function () {
+			if (restore) restore();
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
 	it("should send a save that didn't go through before the app closed", function () {
 		this.timeout(6000);
 		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
@@ -4472,6 +4591,26 @@ describe("Site Map Controller Storage", function () {
 						switchedAt = requests.length;
 					}
 				}).promise).then(function () {
+					assert.fail("should not receive");
+				}, function (error) {
+					assert.equal(error.reason, "cancelled");
+					assert.lengthOf(requests.slice(switchedAt), 0);
+				}).finally(function () {
+					OSApp.currentSession.controller = previous;
+				});
+			});
+
+			it("should not confirm a batch to the controller picked while it was downloading", function () {
+				var image = detailedJpeg(),
+					previous = OSApp.currentSession.controller,
+					switchedAt;
+				installDeviceController(image, { relay: { autoSend: OSApp.SiteMap.dataURLToBytes(image), delay: 100 } });
+
+				setTimeout(function () {
+					OSApp.currentSession.controller = $.extend(true, {}, previous);
+					switchedAt = requests.length;
+				}, 50);
+				return asNative(OSApp.SiteMap.Relay.receive(remote.fp, function () {}).promise).then(function () {
 					assert.fail("should not receive");
 				}, function (error) {
 					assert.equal(error.reason, "cancelled");
