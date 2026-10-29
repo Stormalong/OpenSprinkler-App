@@ -58,8 +58,9 @@ OSApp.Firmware.sendToOS = function( dest, type, requestOptions ) {
 		// browsers don't need a CORS preflight, which the firmware can't tell apart from the real request.
 		hasBody = requestOptions.body !== undefined,
 
-		// Use POST when sending data to the controller (requires firmware 2.1.8 or newer)
-		usePOST = ( isChange && OSApp.Firmware.checkOSVersion( 300 ) && !hasBody ),
+		// Use POST when sending data to the controller (requires firmware 2.1.8 or newer). requestOptions.get keeps
+		// the parameters in the URL, as OpenThings Cloud doesn't pass on POST requests with a body.
+		usePOST = ( isChange && OSApp.Firmware.checkOSVersion( 300 ) && !hasBody && !requestOptions.get ),
 		urlDest = usePOST ? dest.split( "?" )[ 0 ] : dest,
 		obj = {
 			url: OSApp.currentSession.token ? "https://cloud.openthings.io/forward/v1/" + OSApp.currentSession.token + urlDest : OSApp.currentSession.prefix + OSApp.currentSession.ip + urlDest,

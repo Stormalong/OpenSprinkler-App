@@ -2197,6 +2197,11 @@ describe("Site Map Controller Storage", function () {
 				return $.Deferred().reject({ status: 0, statusText: "error" }).promise();
 			}
 
+			// A wrong password, which sendToOS rejects as 401
+			if (remote.deny && remote.deny[path]) {
+				return $.Deferred().reject({ status: 401 }).promise();
+			}
+
 			// A firmware result code, which sendToOS rejects with
 			if (remote.reject && remote.reject[path]) {
 				return $.Deferred().reject({ result: remote.reject[path] }).promise();
@@ -2313,6 +2318,12 @@ describe("Site Map Controller Storage", function () {
 			result = handle(dest, type, options);
 			if (current.after) {
 				current.after(path);
+			}
+
+			// remote.loseReply[path] counts requests carried out whose reply is lost (the relay's are counted there)
+			if (!/^\/mx.$/.test(path) && current.loseReply && current.loseReply[path]) {
+				current.loseReply[path]--;
+				return $.Deferred().reject({ status: 0, statusText: "timeout" }).promise();
 			}
 			return result;
 		});
@@ -3575,6 +3586,135 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	it("should keep map uploads through OpenThings Cloud as GET requests on firmware that POSTs changes", function () {
+		var token = OSApp.currentSession.token,
+			sent = [];
+
+		OSApp.currentSession.controller.options.fwv = 300;
+		OSApp.currentSession.token = "0123456789abcdef0123456789abcdef";
+		sandbox.stub($, "ajaxq").callsFake(function (queue, request) {
+			sent.push(request);
+			return $.Deferred().resolve({ result: 1 }).promise();
+		});
+		return asNative(OSApp.SiteMap.uploadPins({ 0: { x: 0.5, y: 0.5 } }).then(function () {
+			return OSApp.SiteMap.storeImage(jpeg(), true);
+		}).then(function () {
+			return OSApp.SiteMap.deleteRemote();
+		})).then(function () {
+			assert.lengthOf(sent, 3);
+			sent.forEach(function (request) {
+				assert.equal(request.type, "GET");
+				assert.include(request.url, "pw=");
+			});
+			assert.include(sent[0].url, "p=");
+			assert.include(sent[1].url, "fp=");
+		}).finally(function () {
+			OSApp.currentSession.token = token;
+		});
+	});
+
+	it("should not start saving an edit while the map is being edited again", function () {
+		this.timeout(8000);
+		var retryDelay = OSApp.SiteMap.Constants.retryDelay;
+
+		OSApp.SiteMap.Constants.retryDelay = 500;
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			// The check for changes from other devices is slow, so editing starts again before it answers
+			remote.holdNext = "/jm";
+			return editAndSave(page).then(function () {
+				var rect = page.find(".site-map-container")[0].getBoundingClientRect(),
+					event = function (element, type, x, y) {
+						element.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: "mouse", button: 0 }));
+					},
+					handle, r;
+
+				page.find(".site-map-edit").trigger("click");
+				handle = page.find(".site-map-pin")[0];
+				r = handle.getBoundingClientRect();
+				event(handle, "pointerdown", r.left + r.width / 2, r.top + r.height / 2);
+				event(handle, "pointermove", rect.left + 0.8 * rect.width, rect.top + rect.height / 2);
+				event(handle, "pointerup", rect.left + 0.8 * rect.width, rect.top + rect.height / 2);
+				remote.release();
+				return wait(300).then(function () {
+					assert.deepEqual(remote.pins, { 0: [5000, 5000] });
+
+					// Cancelling the second edit sends the first
+					page.find(".site-map-cancel").trigger("click");
+					return waitFor(function () {
+						return remote.pins[0][0] < 3000;
+					});
+				});
+			});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.retryDelay = retryDelay;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should not put an image added for one site on the map of a site picked meanwhile", function () {
+		this.timeout(6000);
+		var image = jpeg("#39d"),
+			restore, switchedAt;
+
+		sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+			callback(image.split(",")[1]);
+		});
+		installController({ rev: 0 });
+		OSApp.SiteMap.save(siteName, { pins: {}, drawings: {}, rev: 0 });
+		return openHomeMap().then(function (page) {
+			remote.after = function (path) {
+				if (path === "/um") {
+					restore = switchController({ rev: 6 }, "Other Controller");
+					switchedAt = requests.length;
+				}
+			};
+			page.find(".site-map-add-image").trigger("click");
+			return wait(300);
+		}).then(function () {
+			assert.lengthOf(requests.slice(switchedAt), 0);
+			return cachedMap("Other Controller");
+		}).then(function (other) {
+			assert.isUndefined(other.image);
+		}).finally(function () {
+			if (restore) restore();
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should not say a save went through when the controller refused the password", function () {
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		remote.deny = { "/cmp": true };
+		return openHomeMap().then(function (page) {
+			return editAndSave(page);
+		}).then(function () {
+			assert.isFalse(OSApp.Errors.showError.calledWith(OSApp.Language._("Settings have been saved")));
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should rename a site's map even when there is no room for a second copy", function () {
+		var set = OSApp.Storage.set,
+			from = OSApp.SiteMap.getStorageKey(siteName),
+			to = OSApp.SiteMap.getStorageKey("Renamed Site");
+
+		OSApp.SiteMap.save(siteName, { pins: { 0: { x: 0.5, y: 0.5 } }, drawings: {} });
+		sandbox.stub(OSApp.Storage, "set").callsFake(function (data) {
+			if (data[to] !== undefined && OSApp.Storage.getItemSync(from) !== null) {
+				throw new Error("QuotaExceededError");
+			}
+			return set.call(OSApp.Storage, data);
+		});
+		try {
+			OSApp.SiteMap.renameSite(siteName, "Renamed Site");
+			assert.equal(OSApp.Storage.getItemSync(from), null);
+			assert.deepEqual(JSON.parse(OSApp.Storage.getItemSync(to)).pins, { 0: { x: 0.5, y: 0.5 } });
+		} finally {
+			OSApp.Storage.remove(to);
+		}
+	});
+
 	it("should send a save that didn't go through before the app closed", function () {
 		this.timeout(6000);
 		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
@@ -4146,6 +4286,30 @@ describe("Site Map Controller Storage", function () {
 				assert.isFalse(restored);
 				assert.equal(remote.fp, "");
 				assert.equal(remote.rev, 3);
+			});
+		});
+
+		it("should keep an added image here when the controller took it but the reply was lost", function () {
+			var image = jpeg("#39d");
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(image.split(",")[1]);
+			});
+			installDeviceController(null, { rev: 0, pins: {} });
+			OSApp.SiteMap.save(siteName, { pins: {}, drawings: {}, rev: 0 });
+			remote.loseReply = { "/cmi": 1 };
+
+			return openHomeMap().then(function (page) {
+				page.find(".site-map-add-image").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 300);
+				});
+			}).then(function () {
+				assert.equal(remote.fp, OSApp.SiteMap.getFingerprint(image));
+				return loadCache();
+			}).then(function (map) {
+				assert.equal(map.image, image);
+			}).finally(function () {
+				OSApp.SiteMap.setHomeView("cards");
 			});
 		});
 

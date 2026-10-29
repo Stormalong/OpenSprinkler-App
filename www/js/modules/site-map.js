@@ -346,8 +346,8 @@ OSApp.SiteMap.storeImage = function( dataURL, deviceImage, onProgress ) {
 	if ( !deviceImage ) {
 		return OSApp.SiteMap.uploadImage( dataURL, onProgress );
 	}
-	return OSApp.Firmware.sendToOS( "/cmi?pw=&fp=" + OSApp.SiteMap.getFingerprint( dataURL ) + "&sz=" +
-		OSApp.SiteMap.getImageSize( dataURL ), "json" );
+	return OSApp.SiteMap.sendData( "/cmi?pw=&fp=" + OSApp.SiteMap.getFingerprint( dataURL ) + "&sz=" +
+		OSApp.SiteMap.getImageSize( dataURL ), "d", "" );
 };
 
 OSApp.SiteMap.downloadImage = function() {
@@ -367,10 +367,10 @@ OSApp.SiteMap.downloadImage = function() {
 };
 
 // Sends data to the controller as the request body, or through OpenThings Cloud, which doesn't pass on POST
-// requests with a body, as the URL parameter named param. An empty body is sent as a plain GET there.
+// requests with a body, as the URL parameter named param of a GET request. An empty body is left out there.
 OSApp.SiteMap.sendData = function( dest, param, data ) {
 	if ( OSApp.currentSession.token ) {
-		return OSApp.Firmware.sendToOS( data ? dest + "&" + param + "=" + encodeURIComponent( data ) : dest, "json" );
+		return OSApp.Firmware.sendToOS( data ? dest + "&" + param + "=" + encodeURIComponent( data ) : dest, "json", { get: true } );
 	}
 	return OSApp.Firmware.sendToOS( dest, "json", { body: data } );
 };
@@ -684,9 +684,18 @@ OSApp.SiteMap.renameSite = function( from, to ) {
 
 	OSApp.Storage.get( fromKey, function( stored ) {
 		if ( stored[ fromKey ] !== null ) {
+
+			// Removed first, so a large map doesn't need room for two copies; put back if it can't be moved
 			data[ OSApp.SiteMap.getStorageKey( to ) ] = stored[ fromKey ];
-			OSApp.Storage.set( data );
 			OSApp.Storage.remove( fromKey );
+			try {
+				OSApp.Storage.set( data );
+			} catch {
+				data = {};
+				data[ fromKey ] = stored[ fromKey ];
+				OSApp.Storage.set( data );
+				OSApp.Errors.showError( OSApp.Language._( "Unable to save site map. The image may be too large." ) );
+			}
 		}
 	} );
 	$( "html" ).trigger( "sitemaprename", [ from, to ] );
@@ -1418,6 +1427,9 @@ OSApp.SiteMap.createView = function() {
 		// The map as it was when editing started, restored if the edit is cancelled
 		editSnapshot = null,
 
+		// Counts edit sessions, so a save that waits on the controller can tell editing started again meanwhile
+		editSession = 0,
+
 		// The run being drawn: { sid, run, isNew, original }
 		drawing = null,
 
@@ -1500,11 +1512,24 @@ OSApp.SiteMap.createView = function() {
 		return OSApp.SiteMap.save( siteName, map, !report );
 	}
 
-	// Where the apps keep the image, this device's copy may be the only one, so it has to be stored here before
-	// the controller gets its fingerprint. Saves this device's copy with dataURL as its image, leaving the map shown
-	// as it is, and returns whether it could. The caller saves the copy again if the controller doesn't take it.
-	function keepImageHere( dataURL ) {
-		return OSApp.SiteMap.save( siteName, $.extend( {}, map, { image: dataURL } ) );
+	// Makes dataURL the map image, to be sent with uploadChanges, and returns whether it could. Where the apps keep
+	// the image, this device's copy may be the only one, so it is stored here before the controller gets its
+	// fingerprint; if there's no room, the map stays as it was.
+	function changeImage( dataURL ) {
+		var previous = map.image,
+			previousMissing = map.missingImage;
+
+		map.image = dataURL;
+		delete map.missingImage;
+		dirty.image = true;
+		if ( saveCache( map.deviceImage ) || !map.deviceImage ) {
+			return true;
+		}
+		map.image = previous;
+		map.missingImage = previousMissing;
+		dirty.image = false;
+		saveCache();
+		return false;
 	}
 
 	// Sends the changes to the controller. A change that doesn't go through is sent again later, unless the
@@ -1740,7 +1765,17 @@ OSApp.SiteMap.createView = function() {
 	// snapshot is the map as it was when editing started.
 	function saveUnlessChangedElsewhere( snapshot ) {
 		var startRev = snapshot ? snapshot.rev : undefined,
+			session = editSession,
+
+			// Editing started again before the controller answered: these changes are part of the new edit now,
+			// sent with its Done or on their own if it is cancelled
+			restarted = function() {
+				return editing && editSession !== session;
+			},
 			save = function() {
+				if ( restarted() ) {
+					return $.Deferred().resolve().promise();
+				}
 				return uploadChanges().then( showSaved );
 			};
 
@@ -1748,6 +1783,9 @@ OSApp.SiteMap.createView = function() {
 			var decided = $.Deferred(),
 				answered = false;
 
+			if ( restarted() ) {
+				return;
+			}
 			if ( startRev === undefined || remote.rev === startRev ) {
 				return save();
 			}
@@ -1816,6 +1854,7 @@ OSApp.SiteMap.createView = function() {
 			}
 		}
 		if ( value && !editing ) {
+			editSession++;
 			editSnapshot = copyMap( map );
 			editSnapshot.dirty = $.extend( {}, dirty );
 		} else if ( !value && editing ) {
@@ -2664,8 +2703,7 @@ OSApp.SiteMap.createView = function() {
 					setEditing( !previous && !!map.image );
 					updateHint();
 					fitMap();
-				},
-				showProgress = showUploadProgress;
+				};
 
 			// A new image while editing is part of the edit: saved with Done, undone by Cancel
 			if ( editing ) {
@@ -2686,24 +2724,20 @@ OSApp.SiteMap.createView = function() {
 				return;
 			}
 
-			if ( map.deviceImage && !keepImageHere( dataURL ) ) {
+			if ( !changeImage( dataURL ) ) {
 				return;
 			}
-			showProgress( 0 );
-			track( OSApp.SiteMap.storeImage( dataURL, map.deviceImage, showProgress ).then( function() {
-				map.image = dataURL;
-				delete map.missingImage;
 
-				// Learn the revision the upload produced before editing starts, so saving the edit doesn't
-				// mistake this upload for a change made on another device
-				return refreshRevision();
-			} ).then( showImage, function() {
-
-				// Put back this device's copy, which may have been given the new image
-				saveCache();
-			} ).always( function() {
-				$.mobile.loading( "hide" );
-			} ) );
+			// The upload learns the revision it produced before editing starts, so saving the edit doesn't mistake
+			// it for a change made on another device. One that doesn't go through stays here, sent again later, as
+			// it may have reached the controller; one refused, or meant for a site no longer picked, isn't shown.
+			uploadChanges().then( showImage, function( error ) {
+				if ( !error || ( typeof error.result !== "number" && error.statusText !== "stale" && error.status !== 401 ) ) {
+					image.attr( "src", map.image || "" );
+					updateHint();
+					fitMap();
+				}
+			} );
 		}, fitController ? Constants.controllerImageSize : Constants.maxImageSize,
 		fitController ? Constants.controllerImageQuality : Constants.imageQuality );
 	}
@@ -2736,15 +2770,10 @@ OSApp.SiteMap.createView = function() {
 			}
 			OSApp.UIDom.areYouSure( OSApp.Language._( "This isn't the image this map was made with, so the valves and lines may not line up. Use it anyway?" ), "",
 				function() {
-					if ( !keepImageHere( resized ) ) {
-						return;
-					}
-					track( OSApp.SiteMap.storeImage( resized, true ).then( function() {
+					if ( changeImage( resized ) ) {
 						useImage( resized );
-						return refreshRevision();
-					}, function() {
-						saveCache();
-					} ) );
+						uploadChanges();
+					}
 				} );
 		}, Constants.maxImageSize, Constants.imageQuality );
 	}
