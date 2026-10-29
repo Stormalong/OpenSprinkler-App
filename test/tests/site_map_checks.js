@@ -2188,7 +2188,7 @@ describe("Site Map Controller Storage", function () {
 		resetRelay();
 		requests = [];
 		OSApp.currentSession.controller.options.smap = remote.rev;
-		sandbox.stub(OSApp.Firmware, "sendToOS").callsFake(function (dest, type, options) {
+		var handle = function (dest, type, options) {
 			var path = dest.split("?")[0],
 				params = query(dest);
 			requests.push({ path: path, params: params, body: options && options.body });
@@ -2293,6 +2293,28 @@ describe("Site Map Controller Storage", function () {
 				return resolved({ result: 1 });
 			}
 			return $.Deferred().reject({ status: 404 }).promise();
+		};
+
+		// remote.after( path ) runs once each request is handled; remote.holdNext holds back the reply to the next
+		// request for that path until remote.release() is called, as a slow controller would
+		sandbox.stub(OSApp.Firmware, "sendToOS").callsFake(function (dest, type, options) {
+			var current = remote,
+				path = dest.split("?")[0],
+				held, result;
+
+			if (current.holdNext === path) {
+				current.holdNext = null;
+				held = $.Deferred();
+				current.release = function () {
+					handle(dest, type, options).then(held.resolve, held.reject);
+				};
+				return held.promise();
+			}
+			result = handle(dest, type, options);
+			if (current.after) {
+				current.after(path);
+			}
+			return result;
 		});
 	}
 
@@ -3398,6 +3420,49 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	it("should stop replacing the whole map when another site is picked partway", function () {
+		var restore;
+
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		remote.after = function (path) {
+			if (path === "/dm") {
+				restore = switchController({ rev: 7, pins: { 1: [1000, 1000] } }, "Other Controller");
+			}
+		};
+
+		return new Promise(function (resolve) {
+			OSApp.SiteMap.restoreBackupData({ image: jpeg("#f00"), pins: { 0: { x: 0.2, y: 0.2 } } }, resolve);
+		}).then(function (restored) {
+			// The rest of the map isn't sent to the controller picked since
+			assert.isFalse(restored);
+			assert.deepEqual(remote.pins, { 1: [1000, 1000] });
+			assert.isNull(remote.image);
+			assert.equal(remote.rev, 7);
+		}).finally(function () {
+			if (restore) restore();
+		});
+	});
+
+	it("should keep an edit started while the reopened map was still loading", function () {
+		this.timeout(6000);
+
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function () {
+			OSApp.SiteMap.setHomeView("cards");
+			remote.holdNext = "/jm";
+			return openHomeMap();
+		}).then(function (page) {
+			// The controller's copy arrives after the valve was moved, before Done
+			return editAndSave(page, function () {
+				remote.release();
+			});
+		}).then(function () {
+			assert.isBelow(remote.pins[0][0], 3000);
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
 	it("should send a save that didn't go through before the app closed", function () {
 		this.timeout(6000);
 		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
@@ -3891,6 +3956,84 @@ describe("Site Map Controller Storage", function () {
 				});
 			}).finally(function () {
 				OSApp.SiteMap.setHomeView("cards");
+			});
+		});
+
+		// Makes saving a map on this device fail once it holds image, as when the device's storage is full
+		function failToStore(image) {
+			var set = OSApp.Storage.set;
+
+			sandbox.stub(OSApp.Storage, "set").callsFake(function (data) {
+				if (JSON.stringify(data).indexOf(image.split(",")[1].slice(0, 200)) >= 0) {
+					throw new Error("QuotaExceededError");
+				}
+				return set.call(OSApp.Storage, data);
+			});
+		}
+
+		it("should not send the fingerprint of an added image this device couldn't keep", function () {
+			var image = jpeg("#39d");
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(image.split(",")[1]);
+			});
+			installDeviceController(null, { rev: 0, pins: {} });
+			OSApp.SiteMap.save(siteName, { pins: {}, drawings: {}, rev: 0 });
+			failToStore(image);
+
+			return openHomeMap().then(function (page) {
+				page.find(".site-map-add-image").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 300);
+				}).then(function () {
+					assert.lengthOf(requestsTo("/cmi"), 0);
+					assert.equal(remote.fp, "");
+					assert.notEqual(page.find(".site-map-image-el").attr("src"), image);
+				});
+			}).finally(function () {
+				OSApp.SiteMap.setHomeView("cards");
+			});
+		});
+
+		it("should keep the old image when this device can't keep the one picked while editing", function () {
+			var image = jpeg("#2a6"),
+				other = jpeg("#a26");
+			installDeviceController(image);
+			OSApp.SiteMap.save(siteName, { image: image, pins: { 0: { x: 0.5, y: 0.5 } }, drawings: {}, rev: 2, deviceImage: true });
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(other.split(",")[1]);
+			});
+			failToStore(other);
+
+			return openHomeMap().then(function (page) {
+				page.find(".site-map-edit").trigger("click");
+				page.find(".site-map-image").trigger("click");
+				page.find(".site-map-edit").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 300);
+				}).then(function () {
+					assert.equal(remote.fp, OSApp.SiteMap.getFingerprint(image));
+					assert.equal(page.find(".site-map-image-el").attr("src"), image);
+					assert.isTrue(OSApp.Errors.showError.calledWith(OSApp.Language._("Unable to save site map. The image may be too large.")));
+					return loadCache();
+				}).then(function (map) {
+					assert.equal(map.image, image);
+				});
+			}).finally(function () {
+				OSApp.SiteMap.setHomeView("cards");
+			});
+		});
+
+		it("should not restore a backup's image that this device couldn't keep", function () {
+			var image = jpeg();
+			installDeviceController(null, { rev: 3, pins: {} });
+			failToStore(image);
+
+			return new Promise(function (resolve) {
+				OSApp.SiteMap.restoreBackupData({ image: image, pins: { 0: { x: 0.5, y: 0.5 } } }, resolve);
+			}).then(function (restored) {
+				assert.isFalse(restored);
+				assert.equal(remote.fp, "");
+				assert.equal(remote.rev, 3);
 			});
 		});
 

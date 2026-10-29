@@ -472,11 +472,22 @@ OSApp.SiteMap.fitImage = function( dataURL ) {
 
 // Replaces the controller's map with a whole map (image, pins, then drawings), leaving out pins and drawings for
 // stations the controller doesn't have, and resolves with it, tagged with the new controller revision. A controller
-// that leaves the image to the apps only gets its fingerprint, and the image stays on this device as it is.
+// that leaves the image to the apps only gets its fingerprint, and the image stays on this device as it is; if this
+// device can't keep it, nothing is changed and it rejects with statusText "storage". Each step stops if another
+// site was picked since, so the rest of the map doesn't go to the new controller.
 OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 	var stationCount = OSApp.SiteMap.getStationCount(),
+		controller = OSApp.currentSession.controller,
 		result = { pins: {}, drawings: OSApp.SiteMap.cleanDrawings( map.drawings, stationCount ),
-			format: OSApp.SiteMap.Constants.drawingFormat };
+			format: OSApp.SiteMap.Constants.drawingFormat },
+		step = function( send ) {
+			return function( value ) {
+				if ( OSApp.currentSession.controller !== controller ) {
+					return $.Deferred().reject( { status: 0, statusText: "stale" } );
+				}
+				return send( value );
+			};
+		};
 
 	$.each( map.pins || {}, function( sid, pos ) {
 		if ( Number( sid ) < stationCount ) {
@@ -492,22 +503,27 @@ OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 			}
 			return map.image ? OSApp.SiteMap.fitImage( map.image ) : null;
 		} )
-		.then( function( image ) {
+		.then( step( function( image ) {
 			result.image = image || undefined;
+
+			// Where the apps keep the image, this device's copy may be the only one
+			if ( result.deviceImage && result.image && !OSApp.SiteMap.save( siteName, result ) ) {
+				return $.Deferred().reject( { status: 0, statusText: "storage" } );
+			}
 
 			// Start from an empty map, so nothing the new one leaves out stays behind
 			return OSApp.SiteMap.deleteRemote();
-		} )
-		.then( function() {
+		} ) )
+		.then( step( function() {
 			return result.image ? OSApp.SiteMap.storeImage( result.image, result.deviceImage, onProgress ) : null;
-		} )
-		.then( function() {
+		} ) )
+		.then( step( function() {
 			return OSApp.SiteMap.uploadPins( result.pins );
-		} )
-		.then( function() {
+		} ) )
+		.then( step( function() {
 			return $.isEmptyObject( result.drawings ) ? null : OSApp.SiteMap.uploadDrawings( result.drawings );
-		} )
-		.then( OSApp.SiteMap.fetchRemote )
+		} ) )
+		.then( step( OSApp.SiteMap.fetchRemote ) )
 		.then( function( remote ) {
 			result.rev = remote.rev;
 			OSApp.SiteMap.save( siteName, result, true );
@@ -1428,8 +1444,9 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	// Saves this device's copy of a map stored on the controller, marked pending while it has changes the
-	// controller doesn't, so they are sent even if the app is closed first
-	function saveCache() {
+	// controller doesn't, so they are sent even if the app is closed first. report shows an error if it can't be
+	// saved; returns whether it was.
+	function saveCache( report ) {
 		var pending = uploading || Object.keys( dirty ).some( function( kind ) {
 			return dirty[ kind ];
 		} );
@@ -1439,7 +1456,14 @@ OSApp.SiteMap.createView = function() {
 		} else {
 			delete map.pending;
 		}
-		OSApp.SiteMap.save( siteName, map, true );
+		return OSApp.SiteMap.save( siteName, map, !report );
+	}
+
+	// Where the apps keep the image, this device's copy may be the only one, so it has to be stored here before
+	// the controller gets its fingerprint. Saves this device's copy with dataURL as its image, leaving the map shown
+	// as it is, and returns whether it could. The caller saves the copy again if the controller doesn't take it.
+	function keepImageHere( dataURL ) {
+		return OSApp.SiteMap.save( siteName, $.extend( {}, map, { image: dataURL } ) );
 	}
 
 	// Sends the changes to the controller. A change that doesn't go through is sent again later, unless the
@@ -1512,7 +1536,7 @@ OSApp.SiteMap.createView = function() {
 			uploading = null;
 
 			// The changes stay marked pending on the site they were made for
-			if ( error && ( error.statusText === "stale" || error.status === 401 ) ) {
+			if ( error && ( error.statusText === "stale" || error.statusText === "storage" || error.status === 401 ) ) {
 				return;
 			}
 
@@ -1627,7 +1651,21 @@ OSApp.SiteMap.createView = function() {
 			return;
 		}
 		if ( source === "controller" ) {
-			saveCache();
+
+			// Not enough room on this device for a new image the apps keep; keep the rest of the changes
+			if ( map.deviceImage && snapshot && map.image !== snapshot.image ) {
+				if ( !saveCache( true ) ) {
+					map.image = snapshot.image;
+					map.missingImage = snapshot.missingImage;
+					image.attr( "src", map.image || "" );
+					dirty.image = false;
+					saveCache();
+					updateHint();
+					fitMap();
+				}
+			} else {
+				saveCache();
+			}
 			saveUnlessChangedElsewhere( snapshot );
 			return;
 		}
@@ -2594,6 +2632,9 @@ OSApp.SiteMap.createView = function() {
 				return;
 			}
 
+			if ( map.deviceImage && !keepImageHere( dataURL ) ) {
+				return;
+			}
 			showProgress( 0 );
 			track( OSApp.SiteMap.storeImage( dataURL, map.deviceImage, showProgress ).then( function() {
 				map.image = dataURL;
@@ -2602,7 +2643,11 @@ OSApp.SiteMap.createView = function() {
 				// Learn the revision the upload produced before editing starts, so saving the edit doesn't
 				// mistake this upload for a change made on another device
 				return refreshRevision();
-			} ).then( showImage ).always( function() {
+			} ).then( showImage, function() {
+
+				// Put back this device's copy, which may have been given the new image
+				saveCache();
+			} ).always( function() {
 				$.mobile.loading( "hide" );
 			} ) );
 		}, fitController ? Constants.controllerImageSize : Constants.maxImageSize,
@@ -2637,9 +2682,14 @@ OSApp.SiteMap.createView = function() {
 			}
 			OSApp.UIDom.areYouSure( OSApp.Language._( "This isn't the image this map was made with, so the valves and lines may not line up. Use it anyway?" ), "",
 				function() {
+					if ( !keepImageHere( resized ) ) {
+						return;
+					}
 					track( OSApp.SiteMap.storeImage( resized, true ).then( function() {
 						useImage( resized );
 						return refreshRevision();
+					}, function() {
+						saveCache();
 					} ) );
 				} );
 		}, Constants.maxImageSize, Constants.imageQuality );
@@ -3418,6 +3468,11 @@ OSApp.SiteMap.createView = function() {
 					return;
 				}
 				mapLoaded = true;
+
+				// Editing started while the map reloaded; saving it checks for changes made elsewhere meanwhile
+				if ( editing ) {
+					return;
+				}
 				showMap( loaded, loadedSource );
 				setEditing( false );
 			} );
