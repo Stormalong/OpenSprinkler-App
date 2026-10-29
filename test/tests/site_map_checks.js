@@ -3965,6 +3965,78 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	describe("while an earlier save is still being sent", function () {
+		var retryDelay;
+
+		beforeEach(function () {
+			retryDelay = OSApp.SiteMap.Constants.retryDelay;
+			OSApp.SiteMap.Constants.retryDelay = 500;
+			installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		});
+
+		afterEach(function () {
+			OSApp.SiteMap.Constants.retryDelay = retryDelay;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+
+		it("should send a later save after it, so the earlier one can't overwrite it", function () {
+			this.timeout(8000);
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(jpeg("#d93").split(",")[1]);
+			});
+			return openHomeMap().then(function (page) {
+				// The first save has a new image, which is slow to upload, before its valve
+				editAndMove(page, 0.2);
+				page.find(".site-map-image").trigger("click");
+				remote.holdNext = "/um";
+				page.find(".site-map-edit").trigger("click");
+				return wait(100).then(function () {
+					editAndMove(page, 0.8);
+					page.find(".site-map-edit").trigger("click");
+					return wait(100);
+				}).then(function () {
+					remote.release();
+					return wait(500);
+				});
+			}).then(function () {
+				assert.isAbove(remote.pins[0][0], 7000);
+			});
+		});
+
+		it("should keep a new edit's changes when the earlier save is refused", function () {
+			this.timeout(8000);
+			return openHomeMap().then(function (page) {
+				remote.holdNext = "/cmp";
+				return editAndSave(page).then(function () {
+					editAndMove(page, 0.8);
+					remote.reject = { "/cmp": 0x11 };
+					remote.release();
+					delete remote.reject;
+					page.find(".site-map-edit").trigger("click");
+					return wait(500);
+				});
+			}).then(function () {
+				assert.isAbove(remote.pins[0][0], 7000);
+			});
+		});
+
+		it("should send an earlier save that failed during an edit once the edit is cancelled", function () {
+			this.timeout(8000);
+			return openHomeMap().then(function (page) {
+				remote.holdNext = "/cmp";
+				return editAndSave(page).then(function () {
+					editAndMove(page, 0.8);
+					remote.fail = { "/cmp": 1 };
+					remote.release();
+					page.find(".site-map-cancel").trigger("click");
+					return waitFor(function () {
+						return remote.pins[0][0] < 3000;
+					});
+				});
+			});
+		});
+	});
+
 	it("should send a save that didn't go through before the app closed", function () {
 		this.timeout(6000);
 		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
@@ -4558,6 +4630,52 @@ describe("Site Map Controller Storage", function () {
 				return loadCache();
 			}).then(function (map) {
 				assert.equal(map.image, image);
+			}).finally(function () {
+				OSApp.SiteMap.setHomeView("cards");
+			});
+		});
+
+		it("should keep this device's copy marked pending until a whole map has been sent", function () {
+			var image = jpeg(),
+				restore;
+			installDeviceController(image);
+			remote.after = function (path) {
+				if (path === "/dm") {
+					restore = switchController({ rev: 6 }, "Other Controller");
+				}
+			};
+
+			return asNative(OSApp.SiteMap.uploadMap(siteName, { image: image, pins: { 0: { x: 0.5, y: 0.5 } }, drawings: {} })).then(function () {
+				assert.fail("should stop");
+			}, function (error) {
+				assert.equal(error.statusText, "stale");
+				return loadCache();
+			}).then(function (map) {
+				assert.isTrue(map.pending);
+				assert.equal(map.image, image);
+			}).finally(function () {
+				if (restore) restore();
+			});
+		});
+
+		it("should keep asking for the image when this device can't keep the one received", function () {
+			var image = jpeg("#2a6");
+			installDeviceController(image);
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(jpeg("#000").split(",")[1], image);
+			});
+			failToStore(image);
+
+			return openHomeMap().then(function (page) {
+				var container = page.find(".site-map-container");
+
+				page.find(".site-map-load-image").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 200);
+				}).then(function () {
+					assert.isTrue(container.hasClass("site-map-missing-image"));
+					assert.isTrue(OSApp.Errors.showError.calledWith(OSApp.Language._("Unable to save site map. The image may be too large.")));
+				});
 			}).finally(function () {
 				OSApp.SiteMap.setHomeView("cards");
 			});

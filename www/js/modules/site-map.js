@@ -505,8 +505,9 @@ OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 		.then( step( function( image ) {
 			result.image = image || undefined;
 
-			// Where the apps keep the image, this device's copy may be the only one
-			if ( result.deviceImage && result.image && !OSApp.SiteMap.save( siteName, result ) ) {
+			// Where the apps keep the image, this device's copy may be the only one. It stays marked pending until
+			// the whole map has been sent, so a save that stops partway is sent again rather than replaced.
+			if ( result.deviceImage && result.image && !OSApp.SiteMap.save( siteName, $.extend( {}, result, { pending: true } ) ) ) {
 				return $.Deferred().reject( { status: 0, statusText: "storage" } );
 			}
 
@@ -1452,6 +1453,12 @@ OSApp.SiteMap.createView = function() {
 		// The changes being uploaded, which still count as unsaved until the upload goes through
 		uploading = null,
 
+		// The save being sent; a later one waits for it (see uploadChanges)
+		activeUpload = null,
+
+		// A save refused while editing: the controller's map is shown again if the edit is cancelled
+		reloadAfterEdit = false,
+
 		// The controller the map was loaded from; a different one means another site was picked
 		loadedController = null,
 
@@ -1554,8 +1561,29 @@ OSApp.SiteMap.createView = function() {
 
 	// Sends the changes to the controller. A change that doesn't go through is sent again later, unless the
 	// controller refused it, the map was closed, or another site was picked. dirty.all replaces the whole map.
+	// Saves go one at a time: a later one starts once the one being sent has finished, so a step of the earlier one
+	// can't overwrite what the later one sent.
 	function uploadChanges() {
+		var previous = activeUpload || $.Deferred().resolve().promise(),
+			next = $.Deferred(),
+			current = next.promise();
+
+		activeUpload = current;
+		previous.always( function() {
+			startUpload().then( next.resolve, next.reject );
+		} );
+		return current.always( function() {
+			if ( activeUpload === current ) {
+				activeUpload = null;
+			}
+		} );
+	}
+
+	function startUpload() {
 		var changed = dirty,
+
+			// The edit session at the start; one started since is an edit made while this save was being sent
+			session = editSession,
 
 			// What is sent is the map as it is now, not an edit started while it is being sent
 			saved = copyMap( map ),
@@ -1637,9 +1665,15 @@ OSApp.SiteMap.createView = function() {
 				if ( error.result === 0x11 && sending !== "pins" ) {
 					OSApp.Errors.showError( OSApp.Language._( "There isn't enough room on the controller for the site map." ) );
 				}
-				dirty = noChanges();
 				uploadFailed = false;
-				reloadFromController();
+
+				// Changes marked since this save started belong to an edit made meanwhile, which keeps them
+				if ( editing && editSession !== session ) {
+					reloadAfterEdit = true;
+				} else {
+					dirty = noChanges();
+					reloadFromController();
+				}
 				return $.Deferred().reject( error );
 			}
 
@@ -1647,6 +1681,11 @@ OSApp.SiteMap.createView = function() {
 			// timer keeps checkForRemoteChanges from replacing the map with the partly saved one.
 			$.each( changed, function( kind, value ) {
 				dirty[ kind ] = dirty[ kind ] || value;
+
+				// An edit started meanwhile keeps them when it is cancelled too
+				if ( editing && editSnapshot && editSession !== session ) {
+					editSnapshot.dirty[ kind ] = editSnapshot.dirty[ kind ] || value;
+				}
 			} );
 			saveCache();
 			if ( !uploadFailed ) {
@@ -1921,6 +1960,15 @@ OSApp.SiteMap.createView = function() {
 			endEditSession( discard );
 		}
 		editing = value;
+
+		// A save refused during the edit: Done sends the edit over it, Cancel shows what the controller has
+		if ( !value && reloadAfterEdit ) {
+			reloadAfterEdit = false;
+			if ( discard ) {
+				dirty = noChanges();
+				reloadFromController();
+			}
+		}
 		placingSid = null;
 		page.toggleClass( "site-map-editing", editing );
 		page.find( ".site-map-image, .site-map-clear, .site-map-cancel" ).toggle( editing );
@@ -2802,19 +2850,35 @@ OSApp.SiteMap.createView = function() {
 		fitController ? Constants.controllerImageQuality : Constants.imageQuality );
 	}
 
-	// Shows the controller's image, now that this device has it
+	// Shows the controller's image, now that this device has it, and returns whether it could. Where the apps keep
+	// the image, this device's copy is what shows it after a restart, so if there's no room for it the map goes on
+	// asking for the image.
 	function useImage( dataURL ) {
+		var previous = map.image,
+			missing = map.missingImage,
+			snapshot = editing && editSnapshot ? { image: editSnapshot.image, missingImage: editSnapshot.missingImage } : null;
+
 		map.image = dataURL;
 		delete map.missingImage;
-		if ( editing && editSnapshot ) {
+		if ( snapshot ) {
 			editSnapshot.image = dataURL;
 			delete editSnapshot.missingImage;
 		}
+		if ( !saveCache( map.deviceImage ) && map.deviceImage ) {
+			map.image = previous;
+			map.missingImage = missing;
+			if ( snapshot ) {
+				editSnapshot.image = snapshot.image;
+				editSnapshot.missingImage = snapshot.missingImage;
+			}
+			updateHint();
+			return false;
+		}
 		image.attr( "src", dataURL );
-		saveCache();
 		updateHint();
 		fitMap();
 		renderPins();
+		return true;
 	}
 
 	// Loads the image file shared from another device. The file has to be the very one the map was made with; any
