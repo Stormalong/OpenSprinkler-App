@@ -146,8 +146,8 @@
 				"www/js/modules/dashboard.js:717",
 				"www/js/modules/programs.js:234",
 				"www/js/modules/sensors.js:2282",
-				"www/js/modules/site-map.js:1285",
-				"www/js/modules/site-map.js:2398",
+				"www/js/modules/site-map.js:1380",
+				"www/js/modules/site-map.js:2528",
 				"www/js/modules/sites.js:370"
 			],
 			"notes": []
@@ -187,25 +187,25 @@
 		},
 		"Add a photo or drawing of your property, then place your stations on it to see and control them from the map.": {
 			"references": [
-				"www/js/modules/site-map.js:1284"
+				"www/js/modules/site-map.js:1379"
 			],
 			"notes": []
 		},
 		"Add drip line": {
 			"references": [
-				"www/js/modules/site-map.js:1718",
-				"www/js/modules/site-map.js:2379",
-				"www/js/modules/site-map.js:2411",
-				"www/js/modules/site-map.js:2465"
+				"www/js/modules/site-map.js:1848",
+				"www/js/modules/site-map.js:2509",
+				"www/js/modules/site-map.js:2541",
+				"www/js/modules/site-map.js:2595"
 			],
 			"notes": []
 		},
 		"Add heads": {
 			"references": [
-				"www/js/modules/site-map.js:1717",
-				"www/js/modules/site-map.js:2376",
-				"www/js/modules/site-map.js:2410",
-				"www/js/modules/site-map.js:2465"
+				"www/js/modules/site-map.js:1847",
+				"www/js/modules/site-map.js:2506",
+				"www/js/modules/site-map.js:2540",
+				"www/js/modules/site-map.js:2595"
 			],
 			"notes": []
 		},
@@ -280,7 +280,7 @@
 		},
 		"All stations have already been placed on the map.": {
 			"references": [
-				"www/js/modules/site-map.js:2751"
+				"www/js/modules/site-map.js:2896"
 			],
 			"notes": []
 		},
@@ -298,7 +298,7 @@
 		},
 		"An Aggregate Sensor references an unsupported analog reading. Resolve its dependencies before restoring.": {
 			"references": [
-				"www/js/modules/import-export.js:634"
+				"www/js/modules/import-export.js:639"
 			],
 			"notes": []
 		},
@@ -344,7 +344,7 @@
 		},
 		"Another device is receiving the image first.": {
 			"references": [
-				"www/js/modules/site-map.js:2653"
+				"www/js/modules/site-map.js:2795"
 			],
 			"notes": []
 		},
@@ -436,13 +436,13 @@
 		},
 		"Are you sure you want to clear the site map?": {
 			"references": [
-				"www/js/modules/site-map.js:2712"
+				"www/js/modules/site-map.js:2857"
 			],
 			"notes": []
 		},
 		"Are you sure you want to delete ": {
 			"references": [
-				"www/js/modules/site-map.js:2777",
+				"www/js/modules/site-map.js:2922",
 				"www/js/modules/sites.js:316"
 			],
 			"notes": []
@@ -527,7 +527,7 @@
 		},
 		"Are you sure you want to restore the configuration?": {
 			"references": [
-				"www/js/modules/import-export.js:1011"
+				"www/js/modules/import-export.js:1016"
 			],
 			"notes": []
 		},
@@ -608,14 +608,14 @@
 		},
 		"Backup restored to your device": {
 			"references": [
-				"www/js/modules/import-export.js:1493"
+				"www/js/modules/import-export.js:1498"
 			],
 			"notes": []
 		},
 		"Backup saved on this device": {
 			"references": [
-				"www/js/modules/import-export.js:183",
-				"www/js/modules/import-export.js:189"
+				"www/js/modules/import-export.js:188",
+				"www/js/modules/import-export.js:194"
 			],
 			"notes": []
 		},
@@ -729,10 +729,10 @@
 				"www/js/modules/dashboard.js:570",
 				"www/js/modules/network.js:171",
 				"www/js/modules/programs.js:3612",
-				"www/js/modules/site-map.js:1279",
-				"www/js/modules/site-map.js:1291",
-				"www/js/modules/site-map.js:1297",
-				"www/js/modules/site-map.js:821"
+				"www/js/modules/site-map.js:1374",
+				"www/js/modules/site-map.js:1386",
+				"www/js/modules/site-map.js:1392",
+				"www/js/modules/site-map.js:888"
 			],
 			"notes": []
 		},
@@ -832,7 +832,7 @@
 		"Clear": {
 			"references": [
 				"www/js/modules/notifications.js:93",
-				"www/js/modules/site-map.js:1299"
+				"www/js/modules/site-map.js:1394"
 			],
 			"notes": []
 		},
@@ -1182,8 +1182,8 @@
 				"www/js/modules/programs.js:2872",
 				"www/js/modules/sensors.js:1347",
 				"www/js/modules/sensors.js:2955",
-				"www/js/modules/site-map.js:2386",
-				"www/js/modules/site-map.js:2422",
+				"www/js/modules/site-map.js:2516",
+				"www/js/modules/site-map.js:2552",
 				"www/js/modules/sites.js:159"
 			],
 			"notes": []
@@ -1378,7 +1378,7 @@
 		"Do you want to stop the selected station?": {
 			"references": [
 				"www/js/modules/dashboard.js:1609",
-				"www/js/modules/site-map.js:2801"
+				"www/js/modules/site-map.js:2946"
 			],
 			"notes": []
 		},
@@ -1420,9 +1420,9 @@
 		},
 		"Done": {
 			"references": [
-				"www/js/modules/site-map.js:1278",
-				"www/js/modules/site-map.js:1702",
-				"www/js/modules/site-map.js:1703",
+				"www/js/modules/site-map.js:1373",
+				"www/js/modules/site-map.js:1832",
+				"www/js/modules/site-map.js:1833",
 				"www/js/modules/ui-dom.js:508"
 			],
 			"notes": []
@@ -1477,9 +1477,9 @@
 			"references": [
 				"www/js/modules/analog.js:719",
 				"www/js/modules/analog.js:769",
-				"www/js/modules/site-map.js:1295",
-				"www/js/modules/site-map.js:1702",
-				"www/js/modules/site-map.js:1703"
+				"www/js/modules/site-map.js:1390",
+				"www/js/modules/site-map.js:1832",
+				"www/js/modules/site-map.js:1833"
 			],
 			"notes": []
 		},
@@ -1530,13 +1530,13 @@
 		},
 		"Email": {
 			"references": [
-				"www/js/modules/import-export.js:154"
+				"www/js/modules/import-export.js:159"
 			],
 			"notes": []
 		},
 		"Email (copy/paste)": {
 			"references": [
-				"www/js/modules/import-export.js:236"
+				"www/js/modules/import-export.js:241"
 			],
 			"notes": []
 		},
@@ -1554,7 +1554,7 @@
 		},
 		"Email backups don't include the site map image.": {
 			"references": [
-				"www/js/modules/import-export.js:157"
+				"www/js/modules/import-export.js:162"
 			],
 			"notes": []
 		},
@@ -1653,7 +1653,7 @@
 		"Enter a duration to manually run ": {
 			"references": [
 				"www/js/modules/dashboard.js:1619",
-				"www/js/modules/site-map.js:2818"
+				"www/js/modules/site-map.js:2963"
 			],
 			"notes": []
 		},
@@ -1853,8 +1853,8 @@
 		},
 		"File": {
 			"references": [
-				"www/js/modules/import-export.js:153",
-				"www/js/modules/import-export.js:235"
+				"www/js/modules/import-export.js:158",
+				"www/js/modules/import-export.js:240"
 			],
 			"notes": []
 		},
@@ -2008,7 +2008,7 @@
 		},
 		"Get from another device": {
 			"references": [
-				"www/js/modules/site-map.js:1289"
+				"www/js/modules/site-map.js:1384"
 			],
 			"notes": []
 		},
@@ -2212,13 +2212,13 @@
 			"references": [
 				"www/js/modules/dashboard.js:717",
 				"www/js/modules/dashboard.js:929",
-				"www/js/modules/site-map.js:1298"
+				"www/js/modules/site-map.js:1393"
 			],
 			"notes": []
 		},
 		"Import": {
 			"references": [
-				"www/js/modules/import-export.js:203"
+				"www/js/modules/import-export.js:208"
 			],
 			"notes": []
 		},
@@ -2261,8 +2261,8 @@
 		},
 		"Internal (within app)": {
 			"references": [
-				"www/js/modules/import-export.js:155",
-				"www/js/modules/import-export.js:237"
+				"www/js/modules/import-export.js:160",
+				"www/js/modules/import-export.js:242"
 			],
 			"notes": []
 		},
@@ -2288,13 +2288,13 @@
 		},
 		"Invalid configuration": {
 			"references": [
-				"www/js/modules/import-export.js:661"
+				"www/js/modules/import-export.js:666"
 			],
 			"notes": []
 		},
 		"Invalid cycle and soak configuration": {
 			"references": [
-				"www/js/modules/import-export.js:752"
+				"www/js/modules/import-export.js:757"
 			],
 			"notes": []
 		},
@@ -2306,20 +2306,20 @@
 		},
 		"Invalid program configuration in backup.": {
 			"references": [
-				"www/js/modules/import-export.js:761"
+				"www/js/modules/import-export.js:766"
 			],
 			"notes": []
 		},
 		"Invalid program sensor adjustment in backup.": {
 			"references": [
-				"www/js/modules/import-export.js:802"
+				"www/js/modules/import-export.js:807"
 			],
 			"notes": []
 		},
 		"Invalid sensor configuration in backup.": {
 			"references": [
-				"www/js/modules/import-export.js:593",
-				"www/js/modules/import-export.js:814"
+				"www/js/modules/import-export.js:598",
+				"www/js/modules/import-export.js:819"
 			],
 			"notes": []
 		},
@@ -2459,13 +2459,13 @@
 		},
 		"Load image file": {
 			"references": [
-				"www/js/modules/site-map.js:1290"
+				"www/js/modules/site-map.js:1385"
 			],
 			"notes": []
 		},
 		"Loading": {
 			"references": [
-				"www/js/modules/site-map.js:1282",
+				"www/js/modules/site-map.js:1377",
 				"www/js/modules/sites.js:892"
 			],
 			"notes": []
@@ -2812,8 +2812,8 @@
 		},
 		"Move valve": {
 			"references": [
-				"www/js/modules/site-map.js:1720",
-				"www/js/modules/site-map.js:2382"
+				"www/js/modules/site-map.js:1850",
+				"www/js/modules/site-map.js:2512"
 			],
 			"notes": []
 		},
@@ -2851,9 +2851,9 @@
 			"references": [
 				"www/js/modules/firmware.js:296",
 				"www/js/modules/network.js:921",
-				"www/js/modules/site-map.js:1499",
-				"www/js/modules/site-map.js:2633",
-				"www/js/modules/site-map.js:707"
+				"www/js/modules/site-map.js:1602",
+				"www/js/modules/site-map.js:2775",
+				"www/js/modules/site-map.js:721"
 			],
 			"notes": []
 		},
@@ -2914,7 +2914,7 @@
 		},
 		"No device with the image has answered. Open the app on a device that has the image, or load the image file.": {
 			"references": [
-				"www/js/modules/site-map.js:2614"
+				"www/js/modules/site-map.js:2756"
 			],
 			"notes": []
 		},
@@ -2944,7 +2944,7 @@
 		},
 		"No stations have been placed. Tap Edit to add stations to the map.": {
 			"references": [
-				"www/js/modules/site-map.js:1724"
+				"www/js/modules/site-map.js:1854"
 			],
 			"notes": []
 		},
@@ -3201,7 +3201,7 @@
 		"Operation not permitted.": {
 			"references": [
 				"www/js/modules/firmware.js:172",
-				"www/js/modules/site-map.js:2796"
+				"www/js/modules/site-map.js:2941"
 			],
 			"notes": []
 		},
@@ -3305,7 +3305,7 @@
 		},
 		"Paste your backup here": {
 			"references": [
-				"www/js/modules/import-export.js:202"
+				"www/js/modules/import-export.js:207"
 			],
 			"notes": []
 		},
@@ -3496,7 +3496,7 @@
 		},
 		"Program": {
 			"references": [
-				"www/js/modules/import-export.js:1304",
+				"www/js/modules/import-export.js:1309",
 				"www/js/modules/programs.js:2136",
 				"www/js/modules/programs.js:2181",
 				"www/js/modules/programs.js:2433",
@@ -3558,7 +3558,7 @@
 		},
 		"Program data is newer than the device firmware and cannot be imported": {
 			"references": [
-				"www/js/modules/import-export.js:918"
+				"www/js/modules/import-export.js:923"
 			],
 			"notes": []
 		},
@@ -3577,7 +3577,7 @@
 		},
 		"Program sensor adjustments that reference a sensor absent from both the backup and this controller will be disabled.": {
 			"references": [
-				"www/js/modules/import-export.js:949"
+				"www/js/modules/import-export.js:954"
 			],
 			"notes": []
 		},
@@ -3713,7 +3713,7 @@
 		},
 		"Receiving image": {
 			"references": [
-				"www/js/modules/site-map.js:2655"
+				"www/js/modules/site-map.js:2797"
 			],
 			"notes": []
 		},
@@ -3899,7 +3899,7 @@
 		"Reset Zoom": {
 			"references": [
 				"www/js/modules/sensors.js:2921",
-				"www/js/modules/site-map.js:1304"
+				"www/js/modules/site-map.js:1399"
 			],
 			"notes": []
 		},
@@ -3917,7 +3917,7 @@
 		},
 		"Restored sensor definitions did not pass verification. The restore was stopped before programs were changed.": {
 			"references": [
-				"www/js/modules/import-export.js:1460"
+				"www/js/modules/import-export.js:1465"
 			],
 			"notes": []
 		},
@@ -4108,7 +4108,7 @@
 		},
 		"Saving site map": {
 			"references": [
-				"www/js/modules/site-map.js:1668"
+				"www/js/modules/site-map.js:1798"
 			],
 			"notes": []
 		},
@@ -4173,13 +4173,13 @@
 		},
 		"Select Export Method": {
 			"references": [
-				"www/js/modules/import-export.js:151"
+				"www/js/modules/import-export.js:156"
 			],
 			"notes": []
 		},
 		"Select Import Method": {
 			"references": [
-				"www/js/modules/import-export.js:233"
+				"www/js/modules/import-export.js:238"
 			],
 			"notes": []
 		},
@@ -4252,7 +4252,7 @@
 		},
 		"Sending the site map image to another device": {
 			"references": [
-				"www/js/modules/site-map.js:824"
+				"www/js/modules/site-map.js:891"
 			],
 			"notes": []
 		},
@@ -4326,7 +4326,7 @@
 		},
 		"Sensor definitions in this backup reference unavailable child sensors.": {
 			"references": [
-				"www/js/modules/import-export.js:910"
+				"www/js/modules/import-export.js:915"
 			],
 			"notes": []
 		},
@@ -4350,7 +4350,7 @@
 		},
 		"Sensor readings conflict with the restored built-in port modes.": {
 			"references": [
-				"www/js/modules/import-export.js:646"
+				"www/js/modules/import-export.js:651"
 			],
 			"notes": []
 		},
@@ -4458,8 +4458,8 @@
 			"references": [
 				"www/js/modules/options.js:1602",
 				"www/js/modules/options.js:598",
-				"www/js/modules/site-map.js:1526",
-				"www/js/modules/site-map.js:583",
+				"www/js/modules/site-map.js:1638",
+				"www/js/modules/site-map.js:586",
 				"www/js/modules/sites.js:1708"
 			],
 			"notes": []
@@ -4473,8 +4473,8 @@
 		},
 		"Share image": {
 			"references": [
-				"www/js/modules/site-map.js:1296",
-				"www/js/modules/site-map.js:2703"
+				"www/js/modules/site-map.js:1391",
+				"www/js/modules/site-map.js:2848"
 			],
 			"notes": []
 		},
@@ -4528,7 +4528,7 @@
 		},
 		"Site Map": {
 			"references": [
-				"www/js/modules/site-map.js:1209"
+				"www/js/modules/site-map.js:1304"
 			],
 			"notes": []
 		},
@@ -4732,14 +4732,14 @@
 		"Station has been queued": {
 			"references": [
 				"www/js/modules/dashboard.js:1631",
-				"www/js/modules/site-map.js:2825"
+				"www/js/modules/site-map.js:2970"
 			],
 			"notes": []
 		},
 		"Station has been stopped": {
 			"references": [
 				"www/js/modules/dashboard.js:1660",
-				"www/js/modules/site-map.js:2809"
+				"www/js/modules/site-map.js:2954"
 			],
 			"notes": []
 		},
@@ -4752,9 +4752,9 @@
 		"Stations": {
 			"references": [
 				"www/js/modules/programs.js:2588",
-				"www/js/modules/site-map.js:1209",
-				"www/js/modules/site-map.js:2329",
-				"www/js/modules/site-map.js:2757"
+				"www/js/modules/site-map.js:1304",
+				"www/js/modules/site-map.js:2459",
+				"www/js/modules/site-map.js:2902"
 			],
 			"notes": []
 		},
@@ -4967,7 +4967,7 @@
 		},
 		"Tap to add a valve. Tap a valve to draw its heads or drip lines.": {
 			"references": [
-				"www/js/modules/site-map.js:1722"
+				"www/js/modules/site-map.js:1852"
 			],
 			"notes": []
 		},
@@ -5028,25 +5028,25 @@
 		},
 		"The active controller changed. Please restart the restore.": {
 			"references": [
-				"www/js/modules/import-export.js:1013"
+				"www/js/modules/import-export.js:1018"
 			],
 			"notes": []
 		},
 		"The active controller changed. The restore finished without refreshing the new controller.": {
 			"references": [
-				"www/js/modules/import-export.js:1481"
+				"www/js/modules/import-export.js:1486"
 			],
 			"notes": []
 		},
 		"The active controller changed. The restore was stopped before completion.": {
 			"references": [
-				"www/js/modules/import-export.js:1356"
+				"www/js/modules/import-export.js:1361"
 			],
 			"notes": []
 		},
-		"The backup was restored, but the site map couldn't be saved to the controller.": {
+		"The backup was restored, but the site map couldn't be saved.": {
 			"references": [
-				"www/js/modules/import-export.js:1492"
+				"www/js/modules/import-export.js:1497"
 			],
 			"notes": []
 		},
@@ -5058,7 +5058,7 @@
 		},
 		"The controller is at its sensor limit. Restoring this backup will delete sensor definitions that exist only on this controller.": {
 			"references": [
-				"www/js/modules/import-export.js:944"
+				"www/js/modules/import-export.js:949"
 			],
 			"notes": []
 		},
@@ -5094,13 +5094,13 @@
 		},
 		"The site map image was changed on another device.": {
 			"references": [
-				"www/js/modules/site-map.js:2615"
+				"www/js/modules/site-map.js:2757"
 			],
 			"notes": []
 		},
 		"The site map was changed on another device. Save your changes anyway?": {
 			"references": [
-				"www/js/modules/site-map.js:1624"
+				"www/js/modules/site-map.js:1754"
 			],
 			"notes": []
 		},
@@ -5112,7 +5112,7 @@
 		},
 		"There isn't enough room on the controller for the site map.": {
 			"references": [
-				"www/js/modules/site-map.js:1484"
+				"www/js/modules/site-map.js:1587"
 			],
 			"notes": []
 		},
@@ -5154,7 +5154,7 @@
 		},
 		"This backup cannot be restored without removing sensors referenced by its aggregate definitions.": {
 			"references": [
-				"www/js/modules/import-export.js:890"
+				"www/js/modules/import-export.js:895"
 			],
 			"notes": []
 		},
@@ -5173,19 +5173,19 @@
 		},
 		"This backup contains more sensor definitions than this controller supports.": {
 			"references": [
-				"www/js/modules/import-export.js:824"
+				"www/js/modules/import-export.js:829"
 			],
 			"notes": []
 		},
 		"This backup contains sensor definitions that are not supported by this controller.": {
 			"references": [
-				"www/js/modules/import-export.js:980"
+				"www/js/modules/import-export.js:985"
 			],
 			"notes": []
 		},
 		"This backup contains sensor definitions that this controller does not support.": {
 			"references": [
-				"www/js/modules/import-export.js:807"
+				"www/js/modules/import-export.js:812"
 			],
 			"notes": []
 		},
@@ -5215,13 +5215,13 @@
 		},
 		"This isn't the image this map was made with, so the valves and lines may not line up. Use it anyway?": {
 			"references": [
-				"www/js/modules/site-map.js:2600"
+				"www/js/modules/site-map.js:2737"
 			],
 			"notes": []
 		},
 		"This map's image is kept on the devices that use it. Get it from a device that has it, or load the image file shared from one.": {
 			"references": [
-				"www/js/modules/site-map.js:1736"
+				"www/js/modules/site-map.js:1866"
 			],
 			"notes": []
 		},
@@ -5345,7 +5345,7 @@
 		},
 		"Too many devices are waiting for the image. Try again in a moment.": {
 			"references": [
-				"www/js/modules/site-map.js:2616"
+				"www/js/modules/site-map.js:2758"
 			],
 			"notes": []
 		},
@@ -5418,13 +5418,13 @@
 		},
 		"Unable to determine the UUID assigned to a restored sensor. The restore was stopped.": {
 			"references": [
-				"www/js/modules/import-export.js:1425"
+				"www/js/modules/import-export.js:1430"
 			],
 			"notes": []
 		},
 		"Unable to import configuration. The restore stopped before completion; review the controller before retrying.": {
 			"references": [
-				"www/js/modules/import-export.js:1026"
+				"www/js/modules/import-export.js:1031"
 			],
 			"notes": []
 		},
@@ -5432,7 +5432,7 @@
 			"references": [
 				"www/js/modules/dashboard.js:495",
 				"www/js/modules/dashboard.js:513",
-				"www/js/modules/import-export.js:994"
+				"www/js/modules/import-export.js:999"
 			],
 			"notes": []
 		},
@@ -5456,7 +5456,7 @@
 		},
 		"Unable to map an aggregate sensor during import. The restore was stopped.": {
 			"references": [
-				"www/js/modules/import-export.js:1441"
+				"www/js/modules/import-export.js:1446"
 			],
 			"notes": []
 		},
@@ -5474,8 +5474,8 @@
 		},
 		"Unable to read the configuration file. Please check the file and try again.": {
 			"references": [
-				"www/js/modules/import-export.js:223",
-				"www/js/modules/import-export.js:259"
+				"www/js/modules/import-export.js:228",
+				"www/js/modules/import-export.js:264"
 			],
 			"notes": []
 		},
@@ -5499,29 +5499,29 @@
 		},
 		"Unable to save site map. The image may be too large.": {
 			"references": [
-				"www/js/modules/site-map.js:108"
+				"www/js/modules/site-map.js:112"
 			],
 			"notes": []
 		},
 		"Unable to share the image.": {
 			"references": [
-				"www/js/modules/site-map.js:2706"
+				"www/js/modules/site-map.js:2851"
 			],
 			"notes": []
 		},
 		"Unable to validate sensor definitions on this controller. No configuration changes were made.": {
 			"references": [
-				"www/js/modules/import-export.js:1006",
-				"www/js/modules/import-export.js:692",
-				"www/js/modules/import-export.js:699",
-				"www/js/modules/import-export.js:708"
+				"www/js/modules/import-export.js:1011",
+				"www/js/modules/import-export.js:697",
+				"www/js/modules/import-export.js:704",
+				"www/js/modules/import-export.js:713"
 			],
 			"notes": []
 		},
 		"Unable to verify sensor definitions during import. The restore was stopped.": {
 			"references": [
-				"www/js/modules/import-export.js:1377",
-				"www/js/modules/import-export.js:1390"
+				"www/js/modules/import-export.js:1382",
+				"www/js/modules/import-export.js:1395"
 			],
 			"notes": []
 		},
@@ -5553,8 +5553,8 @@
 		},
 		"Undo point": {
 			"references": [
-				"www/js/modules/site-map.js:1277",
-				"www/js/modules/site-map.js:2416"
+				"www/js/modules/site-map.js:1372",
+				"www/js/modules/site-map.js:2546"
 			],
 			"notes": []
 		},
@@ -5598,7 +5598,7 @@
 		},
 		"Unsupported onboard analog readings will be skipped. Unsupported Analog port modes will be set to None.": {
 			"references": [
-				"www/js/modules/import-export.js:954"
+				"www/js/modules/import-export.js:959"
 			],
 			"notes": []
 		},
@@ -5802,7 +5802,7 @@
 		},
 		"Waiting for a device that has the image. Open the app on that device.": {
 			"references": [
-				"www/js/modules/site-map.js:2651"
+				"www/js/modules/site-map.js:2793"
 			],
 			"notes": []
 		},
@@ -5814,7 +5814,7 @@
 		},
 		"Warning: Network changes will be made and the device may no longer be accessible from this address.": {
 			"references": [
-				"www/js/modules/import-export.js:932"
+				"www/js/modules/import-export.js:937"
 			],
 			"notes": []
 		},
@@ -6083,13 +6083,13 @@
 		},
 		"Zoom In": {
 			"references": [
-				"www/js/modules/site-map.js:1302"
+				"www/js/modules/site-map.js:1397"
 			],
 			"notes": []
 		},
 		"Zoom Out": {
 			"references": [
-				"www/js/modules/site-map.js:1303"
+				"www/js/modules/site-map.js:1398"
 			],
 			"notes": []
 		},
@@ -6366,7 +6366,7 @@
 				"www/js/modules/dashboard.js:1453",
 				"www/js/modules/dashboard.js:154",
 				"www/js/modules/dashboard.js:235",
-				"www/js/modules/site-map.js:2071",
+				"www/js/modules/site-map.js:2201",
 				"www/js/modules/status.js:136",
 				"www/js/modules/status.js:178",
 				"www/js/modules/status.js:196",
@@ -6840,43 +6840,43 @@
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 634,
+			"line": 639,
 			"key": "An Aggregate Sensor references an unsupported analog reading. Resolve its dependencies before restoring."
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 646,
+			"line": 651,
 			"key": "Sensor readings conflict with the restored built-in port modes."
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 944,
+			"line": 949,
 			"key": "The controller is at its sensor limit. Restoring this backup will delete sensor definitions that exist only on this controller."
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 949,
+			"line": 954,
 			"key": "Program sensor adjustments that reference a sensor absent from both the backup and this controller will be disabled."
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 954,
+			"line": 959,
 			"key": "Unsupported onboard analog readings will be skipped. Unsupported Analog port modes will be set to None."
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 980,
+			"line": 985,
 			"key": "This backup contains sensor definitions that are not supported by this controller."
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/import-export.js",
-			"line": 1304,
+			"line": 1309,
 			"key": "Program"
 		},
 		{
@@ -7374,55 +7374,55 @@
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 824,
+			"line": 891,
 			"key": "Sending the site map image to another device"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 1668,
+			"line": 1798,
 			"key": "Saving site map"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 1717,
+			"line": 1847,
 			"key": "Add heads"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 1718,
+			"line": 1848,
 			"key": "Add drip line"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 1720,
+			"line": 1850,
 			"key": "Move valve"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 2071,
+			"line": 2201,
 			"key": "remaining"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 2655,
+			"line": 2797,
 			"key": "Receiving image"
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 2777,
+			"line": 2922,
 			"key": "Are you sure you want to delete "
 		},
 		{
 			"kind": "concatenation-candidate",
 			"source": "www/js/modules/site-map.js",
-			"line": 2818,
+			"line": 2963,
 			"key": "Enter a duration to manually run "
 		},
 		{

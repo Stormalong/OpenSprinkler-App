@@ -534,8 +534,16 @@ OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 // Brings the local cache up to date with the controller and resolves with the map. A map that only exists
 // on this device is moved to the controller the first time, while the controller has none, unless keepLocal is set.
 // A cached map marked pending has changes that haven't reached the controller yet, so it is kept as it is
-// for the site map to send.
+// for the site map to send. Rejects with statusText "stale" if another site is picked before it finishes.
 OSApp.SiteMap.syncFromController = function( siteName, cached, keepLocal ) {
+	var controller = OSApp.currentSession.controller,
+		stale = function() {
+			return OSApp.currentSession.controller !== controller;
+		},
+		rejectStale = function() {
+			return $.Deferred().reject( { status: 0, statusText: "stale" } );
+		};
+
 	if ( cached.pending ) {
 		return $.Deferred().resolve( cached ).promise();
 	}
@@ -547,10 +555,16 @@ OSApp.SiteMap.syncFromController = function( siteName, cached, keepLocal ) {
 			// Whether this device's copy is the controller's image; controllers report its fingerprint ("fp")
 			cachedIsCurrent = !!cached.image && ( remote.fp ? OSApp.SiteMap.getFingerprint( cached.image ) === remote.fp : unchanged ),
 			finish = function() {
+				if ( stale() ) {
+					return rejectStale();
+				}
 				OSApp.SiteMap.save( siteName, map, true );
 				return map;
 			},
 			loadDrawings = function() {
+				if ( stale() ) {
+					return rejectStale();
+				}
 				if ( !remote.drw ) {
 					return finish();
 				}
@@ -571,6 +585,13 @@ OSApp.SiteMap.syncFromController = function( siteName, cached, keepLocal ) {
 			return OSApp.SiteMap.uploadMap( siteName, cached ).then( function( uploaded ) {
 				OSApp.Errors.showError( OSApp.Language._( "Settings have been saved" ) );
 				return uploaded;
+			}, function( error ) {
+
+				// Part of it may be on the controller already, changing its revision, so this device's copy is
+				// marked pending to be sent again rather than replaced by what the controller has
+				cached.pending = true;
+				OSApp.SiteMap.save( siteName, cached, true );
+				return $.Deferred().reject( error );
 			} );
 		}
 		if ( remote.loc === 1 ) {
@@ -622,7 +643,7 @@ OSApp.SiteMap.getBackupData = function( callback ) {
 
 // Restores a map from a config backup to the controller, or to this device when the controller can't store it.
 // Pins for stations the controller doesn't have are dropped. Calls done when finished, with false if the map
-// couldn't be saved to the controller.
+// couldn't be saved.
 OSApp.SiteMap.restoreBackupData = function( backup, done ) {
 	var stationCount = OSApp.SiteMap.getStationCount(),
 		map = { pins: {}, drawings: {} };
@@ -645,8 +666,7 @@ OSApp.SiteMap.restoreBackupData = function( backup, done ) {
 		var siteName = data.current_site || "default";
 
 		if ( !OSApp.SiteMap.isControllerSupported() ) {
-			OSApp.SiteMap.save( siteName, map );
-			done();
+			done( OSApp.SiteMap.save( siteName, map ) ? undefined : false );
 			return;
 		}
 		OSApp.SiteMap.uploadMap( siteName, map ).then( function() {
@@ -687,6 +707,11 @@ OSApp.SiteMap.loadMap = function( siteName, callback ) {
 		OSApp.SiteMap.syncFromController( siteName, cached ).then( function( map ) {
 			callback( map, "controller" );
 		}, function( error ) {
+
+			// Another site was picked meanwhile; its own load takes over
+			if ( error && error.statusText === "stale" ) {
+				return;
+			}
 
 			// Firmware without the site map endpoints
 			if ( error && error.status === 404 ) {
@@ -811,7 +836,14 @@ OSApp.SiteMap.Relay.send = function( dataURL, fingerprint, sending ) {
 			return request;
 		},
 		step = function() {
-			if ( sending.cancelled || OSApp.currentSession.controller !== sending.controller ) {
+
+			// Requests go to the current controller, so after another site is picked the old one isn't told; its
+			// lease runs out instead
+			if ( OSApp.currentSession.controller !== sending.controller ) {
+				done.resolve();
+				return;
+			}
+			if ( sending.cancelled ) {
 				Relay.request( "/mxc?pw=" ).always( done.resolve );
 				return;
 			}
@@ -927,11 +959,19 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 					received += part.length;
 					onProgress( status, assemble() );
 				}
-				return Relay.request( "/mxa?pw=&off=" + ( status.off + part.length ) );
+				return Relay.request( "/mxa?pw=&off=" + ( status.off + part.length ) ).then( function() {
+					failures = 0;
+				} );
 			} );
 		},
 		step = function() {
-			if ( cancelled || OSApp.currentSession.controller !== controller ) {
+
+			// As when sending, a controller left behind isn't told; its lease runs out
+			if ( OSApp.currentSession.controller !== controller ) {
+				done.reject( { reason: "cancelled" } );
+				return;
+			}
+			if ( cancelled ) {
 				leave( "cancelled" );
 				return;
 			}
@@ -942,7 +982,6 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 				return;
 			}
 			Relay.request( "/mxr?pw=&fp=" + fingerprint ).then( function( status ) {
-				failures = 0;
 				total = status.tot;
 				return status;
 			}, function( error ) {
@@ -962,6 +1001,8 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 						}
 					} );
 				}
+				// Failures only count in a row: waiting in line is progress, a batch that can't be downloaded isn't
+				failures = 0;
 				onProgress( status, null );
 				if ( status.pos === 0 && status.st === Relay.WAITING ) {
 					waitingSince = waitingSince || Date.now();
@@ -1565,11 +1606,20 @@ OSApp.SiteMap.createView = function() {
 
 			// While the map is closed it stays pending, and is sent when the map is shown again
 			if ( active ) {
-				pinSaveTimer = setTimeout( uploadChanges, Constants.retryDelay );
+				pinSaveTimer = setTimeout( retryChanges, Constants.retryDelay );
 			}
 			return $.Deferred().reject( error );
 		} );
 		return track( request );
+	}
+
+	// Sends changes that didn't go through before, unless the map is being edited: the edit's Done sends them with
+	// it, and Cancel sends them on their own
+	function retryChanges() {
+		pinSaveTimer = null;
+		if ( !editing ) {
+			uploadChanges();
+		}
 	}
 
 	// Shows the map as the controller has it, dropping this device's unsaved changes
@@ -1639,10 +1689,14 @@ OSApp.SiteMap.createView = function() {
 			map.pins = snapshot.pins;
 			map.drawings = snapshot.drawings;
 
-			// Keep any change from before editing that is still waiting to be sent
+			// Keep any change from before editing that is still waiting to be sent, and send it
 			dirty = snapshot.dirty || noChanges();
 			if ( source === "controller" ) {
 				saveCache();
+				if ( dirty.pins || dirty.drawings || dirty.image || dirty.all ) {
+					clearTimeout( pinSaveTimer );
+					pinSaveTimer = setTimeout( retryChanges, Constants.retryDelay );
+				}
 			}
 			fitMap();
 			return;

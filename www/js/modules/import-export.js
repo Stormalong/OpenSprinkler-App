@@ -132,12 +132,17 @@ OSApp.ImportExport.prepareBundleStationImport = function( data, targetController
 	return { special: special, stnSpe: stnSpe, error: error };
 };
 
-// Loads the site map so it can go in the backup, then offers the export methods
+// Loads the site map so it can go in the backup, then offers the export methods. Nothing is offered if another
+// site was picked meanwhile, since the map belongs to the previous one.
 OSApp.ImportExport.getExportMethod = function() {
+	var controller = OSApp.currentSession.controller;
+
 	$.mobile.loading( "show" );
 	OSApp.SiteMap.getBackupData( function( siteMap ) {
 		$.mobile.loading( "hide" );
-		OSApp.ImportExport.showExportMethods( siteMap );
+		if ( OSApp.currentSession.controller === controller ) {
+			OSApp.ImportExport.showExportMethods( siteMap );
+		}
 	} );
 };
 
@@ -1489,7 +1494,7 @@ OSApp.ImportExport.importConfig = function( data, onboardPlan, restorePlan ) {
 							OSApp.SiteMap.restoreBackupData( data.siteMap, function( restored ) {
 								$.mobile.loading( "hide" );
 								OSApp.Errors.showError( restored === false ?
-									OSApp.Language._( "The backup was restored, but the site map couldn't be saved to the controller." ) :
+									OSApp.Language._( "The backup was restored, but the site map couldn't be saved." ) :
 									OSApp.Language._( "Backup restored to your device" ) );
 								OSApp.Weather.updateWeather();
 								OSApp.UIDom.goHome( true );

@@ -3463,6 +3463,118 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	it("should keep a map moved from this device marked pending when moving it fails partway", function () {
+		installController({ rev: 0 });
+		remote.fail = { "/cmp": 1 };
+		OSApp.SiteMap.save(siteName, { pins: { 0: { x: 0.3, y: 0.4 } }, drawings: {} });
+
+		return loadMap().then(function () {
+			return cachedMap(siteName);
+		}).then(function (cached) {
+			assert.isTrue(cached.pending);
+			return loadMap();
+		}).then(function (result) {
+			// The controller's map changed with the delete, but this device's copy is still the one to send
+			assert.deepEqual(result.map.pins, { 0: { x: 0.3, y: 0.4 } });
+		});
+	});
+
+	it("should not send a failed save again while the map is being edited, and send it once the edit is cancelled", function () {
+		this.timeout(8000);
+		var retryDelay = OSApp.SiteMap.Constants.retryDelay;
+
+		OSApp.SiteMap.Constants.retryDelay = 800;
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		remote.fail = { "/cmp": 1 };
+		return openHomeMap().then(function (page) {
+			return editAndSave(page).then(function () {
+				var rect = page.find(".site-map-container")[0].getBoundingClientRect(),
+					event = function (element, type, x, y) {
+						element.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 1, pointerType: "mouse", button: 0 }));
+					},
+					handle, r;
+
+				// Editing again before the retry, moving the valve somewhere else
+				page.find(".site-map-edit").trigger("click");
+				handle = page.find(".site-map-pin")[0];
+				r = handle.getBoundingClientRect();
+				event(handle, "pointerdown", r.left + r.width / 2, r.top + r.height / 2);
+				event(handle, "pointermove", rect.left + 0.8 * rect.width, rect.top + rect.height / 2);
+				event(handle, "pointerup", rect.left + 0.8 * rect.width, rect.top + rect.height / 2);
+				return wait(1200).then(function () {
+					assert.deepEqual(remote.pins, { 0: [5000, 5000] });
+					page.find(".site-map-cancel").trigger("click");
+					return waitFor(function () {
+						return remote.pins[0][0] < 3000;
+					});
+				});
+			});
+		}).finally(function () {
+			OSApp.SiteMap.Constants.retryDelay = retryDelay;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should stop loading a map when another site is picked partway", function () {
+		var restore, switchedAt;
+
+		installController({ rev: 2, pins: { 0: [5000, 5000] }, image: jpeg(), drawings: "0" });
+		remote.after = function (path) {
+			if (path === "/jmi") {
+				restore = switchController({ rev: 4, drawings: "1" }, "Other Controller");
+				switchedAt = requests.length;
+			}
+		};
+
+		return asNative(OSApp.SiteMap.syncFromController(siteName, {})).then(function () {
+			assert.fail("should stop");
+		}, function (error) {
+			assert.equal(error.statusText, "stale");
+
+			// The new controller's drawings aren't saved with this site's map
+			assert.lengthOf(requests.slice(switchedAt).filter(function (request) {
+				return request.path === "/jmd";
+			}), 0);
+		}).finally(function () {
+			if (restore) restore();
+		});
+	});
+
+	it("should not export a site map with another controller's configuration", function () {
+		var previous = OSApp.currentSession.controller,
+			show = sandbox.stub(OSApp.ImportExport, "showExportMethods");
+
+		sandbox.stub(OSApp.SiteMap, "getBackupData").callsFake(function (callback) {
+			OSApp.currentSession.controller = $.extend(true, {}, previous);
+			callback({ pins: {}, drawings: {} });
+		});
+		try {
+			OSApp.ImportExport.getExportMethod();
+			assert.isFalse(show.called);
+		} finally {
+			OSApp.currentSession.controller = previous;
+		}
+	});
+
+	it("should report a backup's map that couldn't be kept on this device", function () {
+		var set = OSApp.Storage.set,
+			restored;
+
+		delete OSApp.currentSession.controller.options.smap;
+		sandbox.stub(OSApp.Storage, "set").callsFake(function (data) {
+			if (data[OSApp.SiteMap.getStorageKey(siteName)] !== undefined) {
+				throw new Error("QuotaExceededError");
+			}
+			return set.call(OSApp.Storage, data);
+		});
+		return new Promise(function (resolve) {
+			OSApp.SiteMap.restoreBackupData({ pins: { 0: { x: 0.5, y: 0.5 } } }, resolve);
+		}).then(function (result) {
+			restored = result;
+			assert.isFalse(restored);
+		});
+	});
+
 	it("should send a save that didn't go through before the app closed", function () {
 		this.timeout(6000);
 		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
@@ -4166,6 +4278,42 @@ describe("Site Map Controller Storage", function () {
 				}, function (error) {
 					assert.equal(error.status, 0);
 					assert.lengthOf(requestsTo("/mxr"), 3);
+				});
+			});
+
+			it("should give up receiving when downloads keep failing, though asking where things stand works", function () {
+				var image = detailedJpeg();
+				OSApp.SiteMap.Constants.relayRetries = 2;
+				OSApp.SiteMap.Constants.relayRetryDelay = 5;
+				installDeviceController(image, { relay: { autoSend: OSApp.SiteMap.dataURLToBytes(image) } });
+				remote.fail = { "/mxd": 50 };
+
+				return asNative(OSApp.SiteMap.Relay.receive(remote.fp, function () {}).promise).then(function () {
+					assert.fail("should not receive");
+				}, function (error) {
+					assert.equal(error.status, 0);
+					assert.lengthOf(requestsTo("/mxd"), 3);
+				});
+			});
+
+			it("should not tell the controller picked since that receiving stopped", function () {
+				var image = jpeg(),
+					previous = OSApp.currentSession.controller,
+					switchedAt;
+				installDeviceController(image);
+
+				return asNative(OSApp.SiteMap.Relay.receive(remote.fp, function () {
+					if (switchedAt === undefined) {
+						OSApp.currentSession.controller = $.extend(true, {}, previous);
+						switchedAt = requests.length;
+					}
+				}).promise).then(function () {
+					assert.fail("should not receive");
+				}, function (error) {
+					assert.equal(error.reason, "cancelled");
+					assert.lengthOf(requests.slice(switchedAt), 0);
+				}).finally(function () {
+					OSApp.currentSession.controller = previous;
 				});
 			});
 

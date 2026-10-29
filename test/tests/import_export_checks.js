@@ -696,7 +696,7 @@ describe("Import/Export Checks", function () {
 
 		return cleanupAfter(finished.then(function () {
 			assert.isFalse(OSApp.Errors.showError.calledWith("Backup restored to your device"));
-			assert.isTrue(OSApp.Errors.showError.calledWith("The backup was restored, but the site map couldn't be saved to the controller."));
+			assert.isTrue(OSApp.Errors.showError.calledWith("The backup was restored, but the site map couldn't be saved."));
 		}), sandbox, previousController);
 	});
 

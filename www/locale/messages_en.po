@@ -104,8 +104,8 @@ msgstr ""
 #: www/js/modules/dashboard.js:717
 #: www/js/modules/programs.js:234
 #: www/js/modules/sensors.js:2282
-#: www/js/modules/site-map.js:1285
-#: www/js/modules/site-map.js:2398
+#: www/js/modules/site-map.js:1380
+#: www/js/modules/site-map.js:2528
 #: www/js/modules/sites.js:370
 msgid "Add"
 msgstr ""
@@ -133,23 +133,23 @@ msgstr ""
 msgid "Add a Sensor"
 msgstr ""
 
-#: www/js/modules/site-map.js:1284
+#: www/js/modules/site-map.js:1379
 msgid ""
 "Add a photo or drawing of your property, then place your stations on it to "
 "see and control them from the map."
 msgstr ""
 
-#: www/js/modules/site-map.js:1718
-#: www/js/modules/site-map.js:2379
-#: www/js/modules/site-map.js:2411
-#: www/js/modules/site-map.js:2465
+#: www/js/modules/site-map.js:1848
+#: www/js/modules/site-map.js:2509
+#: www/js/modules/site-map.js:2541
+#: www/js/modules/site-map.js:2595
 msgid "Add drip line"
 msgstr ""
 
-#: www/js/modules/site-map.js:1717
-#: www/js/modules/site-map.js:2376
-#: www/js/modules/site-map.js:2410
-#: www/js/modules/site-map.js:2465
+#: www/js/modules/site-map.js:1847
+#: www/js/modules/site-map.js:2506
+#: www/js/modules/site-map.js:2540
+#: www/js/modules/site-map.js:2595
 msgid "Add heads"
 msgstr ""
 
@@ -200,7 +200,7 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: www/js/modules/site-map.js:2751
+#: www/js/modules/site-map.js:2896
 msgid "All stations have already been placed on the map."
 msgstr ""
 
@@ -212,7 +212,7 @@ msgstr ""
 msgid "Amharic"
 msgstr ""
 
-#: www/js/modules/import-export.js:634
+#: www/js/modules/import-export.js:639
 msgid ""
 "An Aggregate Sensor references an unsupported analog reading. Resolve its "
 "dependencies before restoring."
@@ -246,7 +246,7 @@ msgstr ""
 msgid "Analog Sensor Log"
 msgstr ""
 
-#: www/js/modules/site-map.js:2653
+#: www/js/modules/site-map.js:2795
 msgid "Another device is receiving the image first."
 msgstr ""
 
@@ -308,11 +308,11 @@ msgstr ""
 msgid "Are you sure you want to clear the sensor log?"
 msgstr ""
 
-#: www/js/modules/site-map.js:2712
+#: www/js/modules/site-map.js:2857
 msgid "Are you sure you want to clear the site map?"
 msgstr ""
 
-#: www/js/modules/site-map.js:2777
+#: www/js/modules/site-map.js:2922
 #: www/js/modules/sites.js:316
 msgid "Are you sure you want to delete "
 msgstr ""
@@ -371,7 +371,7 @@ msgstr ""
 msgid "Are you sure you want to reset the wireless settings?"
 msgstr ""
 
-#: www/js/modules/import-export.js:1011
+#: www/js/modules/import-export.js:1016
 msgid "Are you sure you want to restore the configuration?"
 msgstr ""
 
@@ -434,12 +434,12 @@ msgstr ""
 msgid "Back"
 msgstr ""
 
-#: www/js/modules/import-export.js:1493
+#: www/js/modules/import-export.js:1498
 msgid "Backup restored to your device"
 msgstr ""
 
-#: www/js/modules/import-export.js:183
-#: www/js/modules/import-export.js:189
+#: www/js/modules/import-export.js:188
+#: www/js/modules/import-export.js:194
 msgid "Backup saved on this device"
 msgstr ""
 
@@ -525,10 +525,10 @@ msgstr ""
 #: www/js/modules/dashboard.js:570
 #: www/js/modules/network.js:171
 #: www/js/modules/programs.js:3612
-#: www/js/modules/site-map.js:1279
-#: www/js/modules/site-map.js:1291
-#: www/js/modules/site-map.js:1297
-#: www/js/modules/site-map.js:821
+#: www/js/modules/site-map.js:1374
+#: www/js/modules/site-map.js:1386
+#: www/js/modules/site-map.js:1392
+#: www/js/modules/site-map.js:888
 msgid "Cancel"
 msgstr ""
 
@@ -598,7 +598,7 @@ msgid "Choose day(s)"
 msgstr ""
 
 #: www/js/modules/notifications.js:93
-#: www/js/modules/site-map.js:1299
+#: www/js/modules/site-map.js:1394
 msgid "Clear"
 msgstr ""
 
@@ -839,8 +839,8 @@ msgstr ""
 #: www/js/modules/programs.js:2872
 #: www/js/modules/sensors.js:1347
 #: www/js/modules/sensors.js:2955
-#: www/js/modules/site-map.js:2386
-#: www/js/modules/site-map.js:2422
+#: www/js/modules/site-map.js:2516
+#: www/js/modules/site-map.js:2552
 #: www/js/modules/sites.js:159
 msgid "Delete"
 msgstr ""
@@ -977,7 +977,7 @@ msgid "Do you want to stop the currently running program?"
 msgstr ""
 
 #: www/js/modules/dashboard.js:1609
-#: www/js/modules/site-map.js:2801
+#: www/js/modules/site-map.js:2946
 msgid "Do you want to stop the selected station?"
 msgstr ""
 
@@ -1005,9 +1005,9 @@ msgstr ""
 msgid "Don't have an account?"
 msgstr ""
 
-#: www/js/modules/site-map.js:1278
-#: www/js/modules/site-map.js:1702
-#: www/js/modules/site-map.js:1703
+#: www/js/modules/site-map.js:1373
+#: www/js/modules/site-map.js:1832
+#: www/js/modules/site-map.js:1833
 #: www/js/modules/ui-dom.js:508
 msgid "Done"
 msgstr ""
@@ -1046,9 +1046,9 @@ msgstr ""
 
 #: www/js/modules/analog.js:719
 #: www/js/modules/analog.js:769
-#: www/js/modules/site-map.js:1295
-#: www/js/modules/site-map.js:1702
-#: www/js/modules/site-map.js:1703
+#: www/js/modules/site-map.js:1390
+#: www/js/modules/site-map.js:1832
+#: www/js/modules/site-map.js:1833
 msgid "Edit"
 msgstr ""
 
@@ -1083,11 +1083,11 @@ msgstr ""
 msgid "Elevation"
 msgstr ""
 
-#: www/js/modules/import-export.js:154
+#: www/js/modules/import-export.js:159
 msgid "Email"
 msgstr ""
 
-#: www/js/modules/import-export.js:236
+#: www/js/modules/import-export.js:241
 msgid "Email (copy/paste)"
 msgstr ""
 
@@ -1099,7 +1099,7 @@ msgstr ""
 msgid "Email Settings"
 msgstr ""
 
-#: www/js/modules/import-export.js:157
+#: www/js/modules/import-export.js:162
 msgid "Email backups don't include the site map image."
 msgstr ""
 
@@ -1170,7 +1170,7 @@ msgid "Enter IP Address"
 msgstr ""
 
 #: www/js/modules/dashboard.js:1619
-#: www/js/modules/site-map.js:2818
+#: www/js/modules/site-map.js:2963
 msgid "Enter a duration to manually run "
 msgstr ""
 
@@ -1306,8 +1306,8 @@ msgstr ""
 msgid "Feb"
 msgstr ""
 
-#: www/js/modules/import-export.js:153
-#: www/js/modules/import-export.js:235
+#: www/js/modules/import-export.js:158
+#: www/js/modules/import-export.js:240
 msgid "File"
 msgstr ""
 
@@ -1415,7 +1415,7 @@ msgstr ""
 msgid "German"
 msgstr ""
 
-#: www/js/modules/site-map.js:1289
+#: www/js/modules/site-map.js:1384
 msgid "Get from another device"
 msgstr ""
 
@@ -1561,11 +1561,11 @@ msgstr ""
 
 #: www/js/modules/dashboard.js:717
 #: www/js/modules/dashboard.js:929
-#: www/js/modules/site-map.js:1298
+#: www/js/modules/site-map.js:1393
 msgid "Image"
 msgstr ""
 
-#: www/js/modules/import-export.js:203
+#: www/js/modules/import-export.js:208
 msgid "Import"
 msgstr ""
 
@@ -1594,8 +1594,8 @@ msgstr ""
 msgid "Integrations"
 msgstr ""
 
-#: www/js/modules/import-export.js:155
-#: www/js/modules/import-export.js:237
+#: www/js/modules/import-export.js:160
+#: www/js/modules/import-export.js:242
 msgid "Internal (within app)"
 msgstr ""
 
@@ -1613,11 +1613,11 @@ msgstr ""
 msgid "Interval (Days)"
 msgstr ""
 
-#: www/js/modules/import-export.js:661
+#: www/js/modules/import-export.js:666
 msgid "Invalid configuration"
 msgstr ""
 
-#: www/js/modules/import-export.js:752
+#: www/js/modules/import-export.js:757
 msgid "Invalid cycle and soak configuration"
 msgstr ""
 
@@ -1625,16 +1625,16 @@ msgstr ""
 msgid "Invalid new OTC token. Any other changes were made successfully."
 msgstr ""
 
-#: www/js/modules/import-export.js:761
+#: www/js/modules/import-export.js:766
 msgid "Invalid program configuration in backup."
 msgstr ""
 
-#: www/js/modules/import-export.js:802
+#: www/js/modules/import-export.js:807
 msgid "Invalid program sensor adjustment in backup."
 msgstr ""
 
-#: www/js/modules/import-export.js:593
-#: www/js/modules/import-export.js:814
+#: www/js/modules/import-export.js:598
+#: www/js/modules/import-export.js:819
 msgid "Invalid sensor configuration in backup."
 msgstr ""
 
@@ -1730,11 +1730,11 @@ msgstr ""
 msgid "Level"
 msgstr ""
 
-#: www/js/modules/site-map.js:1290
+#: www/js/modules/site-map.js:1385
 msgid "Load image file"
 msgstr ""
 
-#: www/js/modules/site-map.js:1282
+#: www/js/modules/site-map.js:1377
 #: www/js/modules/sites.js:892
 msgid "Loading"
 msgstr ""
@@ -1977,8 +1977,8 @@ msgstr ""
 msgid "Move right"
 msgstr ""
 
-#: www/js/modules/site-map.js:1720
-#: www/js/modules/site-map.js:2382
+#: www/js/modules/site-map.js:1850
+#: www/js/modules/site-map.js:2512
 msgid "Move valve"
 msgstr ""
 
@@ -2004,9 +2004,9 @@ msgstr ""
 
 #: www/js/modules/firmware.js:296
 #: www/js/modules/network.js:921
-#: www/js/modules/site-map.js:1499
-#: www/js/modules/site-map.js:2633
-#: www/js/modules/site-map.js:707
+#: www/js/modules/site-map.js:1602
+#: www/js/modules/site-map.js:2775
+#: www/js/modules/site-map.js:721
 msgid "Network Error"
 msgstr ""
 
@@ -2050,7 +2050,7 @@ msgstr ""
 msgid "No Adjustment"
 msgstr ""
 
-#: www/js/modules/site-map.js:2614
+#: www/js/modules/site-map.js:2756
 msgid ""
 "No device with the image has answered. Open the app on a device that has "
 "the image, or load the image file."
@@ -2074,7 +2074,7 @@ msgstr ""
 msgid "No sensor logs found."
 msgstr ""
 
-#: www/js/modules/site-map.js:1724
+#: www/js/modules/site-map.js:1854
 msgid "No stations have been placed. Tap Edit to add stations to the map."
 msgstr ""
 
@@ -2255,7 +2255,7 @@ msgid "Operation"
 msgstr ""
 
 #: www/js/modules/firmware.js:172
-#: www/js/modules/site-map.js:2796
+#: www/js/modules/site-map.js:2941
 msgid "Operation not permitted."
 msgstr ""
 
@@ -2331,7 +2331,7 @@ msgstr ""
 msgid "Password:"
 msgstr ""
 
-#: www/js/modules/import-export.js:202
+#: www/js/modules/import-export.js:207
 msgid "Paste your backup here"
 msgstr ""
 
@@ -2467,7 +2467,7 @@ msgstr ""
 msgid "Preview Programs"
 msgstr ""
 
-#: www/js/modules/import-export.js:1304
+#: www/js/modules/import-export.js:1309
 #: www/js/modules/programs.js:2136
 #: www/js/modules/programs.js:2181
 #: www/js/modules/programs.js:2433
@@ -2511,7 +2511,7 @@ msgstr ""
 msgid "Program adjustments are unavailable."
 msgstr ""
 
-#: www/js/modules/import-export.js:918
+#: www/js/modules/import-export.js:923
 msgid "Program data is newer than the device firmware and cannot be imported"
 msgstr ""
 
@@ -2526,7 +2526,7 @@ msgid ""
 "loaded."
 msgstr ""
 
-#: www/js/modules/import-export.js:949
+#: www/js/modules/import-export.js:954
 msgid ""
 "Program sensor adjustments that reference a sensor absent from both the "
 "backup and this controller will be disabled."
@@ -2622,7 +2622,7 @@ msgstr ""
 msgid "Reboot Reason"
 msgstr ""
 
-#: www/js/modules/site-map.js:2655
+#: www/js/modules/site-map.js:2797
 msgid "Receiving image"
 msgstr ""
 
@@ -2755,7 +2755,7 @@ msgid "Reset Wireless Settings"
 msgstr ""
 
 #: www/js/modules/sensors.js:2921
-#: www/js/modules/site-map.js:1304
+#: www/js/modules/site-map.js:1399
 msgid "Reset Zoom"
 msgstr ""
 
@@ -2767,7 +2767,7 @@ msgstr ""
 msgid "Reset cycle and soak settings for all stations?"
 msgstr ""
 
-#: www/js/modules/import-export.js:1460
+#: www/js/modules/import-export.js:1465
 msgid ""
 "Restored sensor definitions did not pass verification. The restore was "
 "stopped before programs were changed."
@@ -2900,7 +2900,7 @@ msgstr ""
 msgid "Save Password"
 msgstr ""
 
-#: www/js/modules/site-map.js:1668
+#: www/js/modules/site-map.js:1798
 msgid "Saving site map"
 msgstr ""
 
@@ -2945,11 +2945,11 @@ msgstr ""
 msgid "See help documentation for details."
 msgstr ""
 
-#: www/js/modules/import-export.js:151
+#: www/js/modules/import-export.js:156
 msgid "Select Export Method"
 msgstr ""
 
-#: www/js/modules/import-export.js:233
+#: www/js/modules/import-export.js:238
 msgid "Select Import Method"
 msgstr ""
 
@@ -3005,7 +3005,7 @@ msgstr ""
 msgid "Sender Email"
 msgstr ""
 
-#: www/js/modules/site-map.js:824
+#: www/js/modules/site-map.js:891
 msgid "Sending the site map image to another device"
 msgstr ""
 
@@ -3057,7 +3057,7 @@ msgstr ""
 msgid "Sensor adjustment is unavailable; using 100%."
 msgstr ""
 
-#: www/js/modules/import-export.js:910
+#: www/js/modules/import-export.js:915
 msgid "Sensor definitions in this backup reference unavailable child sensors."
 msgstr ""
 
@@ -3073,7 +3073,7 @@ msgstr ""
 msgid "Sensor number exists!"
 msgstr ""
 
-#: www/js/modules/import-export.js:646
+#: www/js/modules/import-export.js:651
 msgid "Sensor readings conflict with the restored built-in port modes."
 msgstr ""
 
@@ -3151,8 +3151,8 @@ msgstr ""
 
 #: www/js/modules/options.js:1602
 #: www/js/modules/options.js:598
-#: www/js/modules/site-map.js:1526
-#: www/js/modules/site-map.js:583
+#: www/js/modules/site-map.js:1638
+#: www/js/modules/site-map.js:586
 #: www/js/modules/sites.js:1708
 msgid "Settings have been saved"
 msgstr ""
@@ -3162,8 +3162,8 @@ msgstr ""
 msgid "Settings were saved, but an invalid master station was ignored."
 msgstr ""
 
-#: www/js/modules/site-map.js:1296
-#: www/js/modules/site-map.js:2703
+#: www/js/modules/site-map.js:1391
+#: www/js/modules/site-map.js:2848
 msgid "Share image"
 msgstr ""
 
@@ -3199,7 +3199,7 @@ msgstr ""
 msgid "Single Run"
 msgstr ""
 
-#: www/js/modules/site-map.js:1209
+#: www/js/modules/site-map.js:1304
 msgid "Site Map"
 msgstr ""
 
@@ -3339,12 +3339,12 @@ msgid "Station Type"
 msgstr ""
 
 #: www/js/modules/dashboard.js:1631
-#: www/js/modules/site-map.js:2825
+#: www/js/modules/site-map.js:2970
 msgid "Station has been queued"
 msgstr ""
 
 #: www/js/modules/dashboard.js:1660
-#: www/js/modules/site-map.js:2809
+#: www/js/modules/site-map.js:2954
 msgid "Station has been stopped"
 msgstr ""
 
@@ -3355,9 +3355,9 @@ msgid ""
 msgstr ""
 
 #: www/js/modules/programs.js:2588
-#: www/js/modules/site-map.js:1209
-#: www/js/modules/site-map.js:2329
-#: www/js/modules/site-map.js:2757
+#: www/js/modules/site-map.js:1304
+#: www/js/modules/site-map.js:2459
+#: www/js/modules/site-map.js:2902
 msgid "Stations"
 msgstr ""
 
@@ -3516,7 +3516,7 @@ msgstr ""
 msgid "Tap to Configure Master"
 msgstr ""
 
-#: www/js/modules/site-map.js:1722
+#: www/js/modules/site-map.js:1852
 msgid "Tap to add a valve. Tap a valve to draw its heads or drip lines."
 msgstr ""
 
@@ -3563,24 +3563,22 @@ msgid ""
 "from this reference point."
 msgstr ""
 
-#: www/js/modules/import-export.js:1013
+#: www/js/modules/import-export.js:1018
 msgid "The active controller changed. Please restart the restore."
 msgstr ""
 
-#: www/js/modules/import-export.js:1481
+#: www/js/modules/import-export.js:1486
 msgid ""
 "The active controller changed. The restore finished without refreshing the "
 "new controller."
 msgstr ""
 
-#: www/js/modules/import-export.js:1356
+#: www/js/modules/import-export.js:1361
 msgid "The active controller changed. The restore was stopped before completion."
 msgstr ""
 
-#: www/js/modules/import-export.js:1492
-msgid ""
-"The backup was restored, but the site map couldn't be saved to the "
-"controller."
+#: www/js/modules/import-export.js:1497
+msgid "The backup was restored, but the site map couldn't be saved."
 msgstr ""
 
 #: www/js/modules/status.js:213
@@ -3591,7 +3589,7 @@ msgid ""
 "instructions, visit our support site"
 msgstr ""
 
-#: www/js/modules/import-export.js:944
+#: www/js/modules/import-export.js:949
 msgid ""
 "The controller is at its sensor limit. Restoring this backup will delete "
 "sensor definitions that exist only on this controller."
@@ -3619,11 +3617,11 @@ msgstr ""
 msgid "The selected station is already running or is scheduled to run."
 msgstr ""
 
-#: www/js/modules/site-map.js:2615
+#: www/js/modules/site-map.js:2757
 msgid "The site map image was changed on another device."
 msgstr ""
 
-#: www/js/modules/site-map.js:1624
+#: www/js/modules/site-map.js:1754
 msgid "The site map was changed on another device. Save your changes anyway?"
 msgstr ""
 
@@ -3631,7 +3629,7 @@ msgstr ""
 msgid "The watering percentage scales station run times by the set value."
 msgstr ""
 
-#: www/js/modules/site-map.js:1484
+#: www/js/modules/site-map.js:1587
 msgid "There isn't enough room on the controller for the site map."
 msgstr ""
 
@@ -3663,7 +3661,7 @@ msgstr ""
 msgid "This action can take a while depending on the number of log records."
 msgstr ""
 
-#: www/js/modules/import-export.js:890
+#: www/js/modules/import-export.js:895
 msgid ""
 "This backup cannot be restored without removing sensors referenced by its "
 "aggregate definitions."
@@ -3680,17 +3678,17 @@ msgstr ""
 msgid "This backup contains an incomplete Bundle Station definition."
 msgstr ""
 
-#: www/js/modules/import-export.js:824
+#: www/js/modules/import-export.js:829
 msgid "This backup contains more sensor definitions than this controller supports."
 msgstr ""
 
-#: www/js/modules/import-export.js:980
+#: www/js/modules/import-export.js:985
 msgid ""
 "This backup contains sensor definitions that are not supported by this "
 "controller."
 msgstr ""
 
-#: www/js/modules/import-export.js:807
+#: www/js/modules/import-export.js:812
 msgid ""
 "This backup contains sensor definitions that this controller does not "
 "support."
@@ -3718,13 +3716,13 @@ msgid ""
 "application can be found at"
 msgstr ""
 
-#: www/js/modules/site-map.js:2600
+#: www/js/modules/site-map.js:2737
 msgid ""
 "This isn't the image this map was made with, so the valves and lines may "
 "not line up. Use it anyway?"
 msgstr ""
 
-#: www/js/modules/site-map.js:1736
+#: www/js/modules/site-map.js:1866
 msgid ""
 "This map's image is kept on the devices that use it. Get it from a device "
 "that has it, or load the image file shared from one."
@@ -3825,7 +3823,7 @@ msgstr ""
 msgid "Token"
 msgstr ""
 
-#: www/js/modules/site-map.js:2616
+#: www/js/modules/site-map.js:2758
 msgid "Too many devices are waiting for the image. Try again in a moment."
 msgstr ""
 
@@ -3876,13 +3874,13 @@ msgstr ""
 msgid "Unable to connect to"
 msgstr ""
 
-#: www/js/modules/import-export.js:1425
+#: www/js/modules/import-export.js:1430
 msgid ""
 "Unable to determine the UUID assigned to a restored sensor. The restore was "
 "stopped."
 msgstr ""
 
-#: www/js/modules/import-export.js:1026
+#: www/js/modules/import-export.js:1031
 msgid ""
 "Unable to import configuration. The restore stopped before completion; "
 "review the controller before retrying."
@@ -3890,7 +3888,7 @@ msgstr ""
 
 #: www/js/modules/dashboard.js:495
 #: www/js/modules/dashboard.js:513
-#: www/js/modules/import-export.js:994
+#: www/js/modules/import-export.js:999
 msgid "Unable to load Bundle Station configuration."
 msgstr ""
 
@@ -3908,7 +3906,7 @@ msgstr ""
 msgid "Unable to load station configuration."
 msgstr ""
 
-#: www/js/modules/import-export.js:1441
+#: www/js/modules/import-export.js:1446
 msgid "Unable to map an aggregate sensor during import. The restore was stopped."
 msgstr ""
 
@@ -3920,8 +3918,8 @@ msgstr ""
 msgid "Unable to read cloud data"
 msgstr ""
 
-#: www/js/modules/import-export.js:223
-#: www/js/modules/import-export.js:259
+#: www/js/modules/import-export.js:228
+#: www/js/modules/import-export.js:264
 msgid "Unable to read the configuration file. Please check the file and try again."
 msgstr ""
 
@@ -3941,25 +3939,25 @@ msgid ""
 "again."
 msgstr ""
 
-#: www/js/modules/site-map.js:108
+#: www/js/modules/site-map.js:112
 msgid "Unable to save site map. The image may be too large."
 msgstr ""
 
-#: www/js/modules/site-map.js:2706
+#: www/js/modules/site-map.js:2851
 msgid "Unable to share the image."
 msgstr ""
 
-#: www/js/modules/import-export.js:1006
-#: www/js/modules/import-export.js:692
-#: www/js/modules/import-export.js:699
-#: www/js/modules/import-export.js:708
+#: www/js/modules/import-export.js:1011
+#: www/js/modules/import-export.js:697
+#: www/js/modules/import-export.js:704
+#: www/js/modules/import-export.js:713
 msgid ""
 "Unable to validate sensor definitions on this controller. No configuration "
 "changes were made."
 msgstr ""
 
-#: www/js/modules/import-export.js:1377
-#: www/js/modules/import-export.js:1390
+#: www/js/modules/import-export.js:1382
+#: www/js/modules/import-export.js:1395
 msgid "Unable to verify sensor definitions during import. The restore was stopped."
 msgstr ""
 
@@ -3981,8 +3979,8 @@ msgstr ""
 msgid "Undercurrent Threshold"
 msgstr ""
 
-#: www/js/modules/site-map.js:1277
-#: www/js/modules/site-map.js:2416
+#: www/js/modules/site-map.js:1372
+#: www/js/modules/site-map.js:2546
 msgid "Undo point"
 msgstr ""
 
@@ -4014,7 +4012,7 @@ msgstr ""
 msgid "Unrecognised weather provider"
 msgstr ""
 
-#: www/js/modules/import-export.js:954
+#: www/js/modules/import-export.js:959
 msgid ""
 "Unsupported onboard analog readings will be skipped. Unsupported Analog "
 "port modes will be set to None."
@@ -4163,7 +4161,7 @@ msgstr ""
 msgid "Voltage"
 msgstr ""
 
-#: www/js/modules/site-map.js:2651
+#: www/js/modules/site-map.js:2793
 msgid "Waiting for a device that has the image. Open the app on that device."
 msgstr ""
 
@@ -4171,7 +4169,7 @@ msgstr ""
 msgid "Warning"
 msgstr ""
 
-#: www/js/modules/import-export.js:932
+#: www/js/modules/import-export.js:937
 msgid ""
 "Warning: Network changes will be made and the device may no longer be "
 "accessible from this address."
@@ -4382,11 +4380,11 @@ msgstr ""
 msgid "Zone"
 msgstr ""
 
-#: www/js/modules/site-map.js:1302
+#: www/js/modules/site-map.js:1397
 msgid "Zoom In"
 msgstr ""
 
-#: www/js/modules/site-map.js:1303
+#: www/js/modules/site-map.js:1398
 msgid "Zoom Out"
 msgstr ""
 
@@ -4575,7 +4573,7 @@ msgstr ""
 #: www/js/modules/dashboard.js:1453
 #: www/js/modules/dashboard.js:154
 #: www/js/modules/dashboard.js:235
-#: www/js/modules/site-map.js:2071
+#: www/js/modules/site-map.js:2201
 #: www/js/modules/status.js:136
 #: www/js/modules/status.js:178
 #: www/js/modules/status.js:196
