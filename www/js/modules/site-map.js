@@ -336,6 +336,21 @@ OSApp.SiteMap.getImageSize = function( dataURL ) {
 	return OSApp.SiteMap.getImageChunks( dataURL ).total;
 };
 
+// Requests go to whichever controller is picked when they are sent. A chain of requests for one controller wraps
+// each step with the function this returns, so it stops, rejecting with statusText "stale", once another site has
+// been picked. controller defaults to the current one.
+OSApp.SiteMap.forController = function( controller ) {
+	controller = controller || OSApp.currentSession.controller;
+	return function( send ) {
+		return function() {
+			if ( OSApp.currentSession.controller !== controller ) {
+				return $.Deferred().reject( { status: 0, statusText: "stale" } );
+			}
+			return send.apply( this, arguments );
+		};
+	};
+};
+
 OSApp.SiteMap.fetchRemote = function() {
 	return OSApp.Firmware.sendToOS( "/jm?pw=", "json" );
 };
@@ -378,21 +393,16 @@ OSApp.SiteMap.sendData = function( dest, param, data ) {
 // Uploads the image chunk by chunk; onProgress receives the fraction sent so far
 OSApp.SiteMap.uploadImage = function( dataURL, onProgress ) {
 	var upload = OSApp.SiteMap.getImageChunks( dataURL ),
-		controller = OSApp.currentSession.controller;
+		whenCurrent = OSApp.SiteMap.forController();
 
 	onProgress = onProgress || function() {};
 	return upload.chunks.reduce( function( previous, chunk, index ) {
-		return previous.then( function() {
-
-			// Stop if the app switched to another controller mid-upload
-			if ( OSApp.currentSession.controller !== controller ) {
-				return $.Deferred().reject( { status: 0, statusText: "stale" } );
-			}
+		return previous.then( whenCurrent( function() {
 			return OSApp.SiteMap.sendData( "/um?pw=&off=" + chunk.offset + "&tot=" + upload.total, "d", chunk.body )
 				.then( function() {
 					onProgress( ( index + 1 ) / upload.chunks.length );
 				} );
-		} );
+		} ) );
 	}, $.Deferred().resolve().promise() );
 };
 
@@ -415,7 +425,7 @@ OSApp.SiteMap.downloadDrawings = function() {
 OSApp.SiteMap.uploadDrawings = function( drawings ) {
 	var text = OSApp.SiteMap.encodeDrawings( drawings ),
 		size = OSApp.SiteMap.Constants.uploadChunkChars,
-		controller = OSApp.currentSession.controller,
+		whenCurrent = OSApp.SiteMap.forController(),
 		offsets = [],
 		offset;
 
@@ -426,12 +436,9 @@ OSApp.SiteMap.uploadDrawings = function( drawings ) {
 		offsets.push( offset );
 	}
 	return offsets.reduce( function( previous, start ) {
-		return previous.then( function() {
-			if ( OSApp.currentSession.controller !== controller ) {
-				return $.Deferred().reject( { status: 0, statusText: "stale" } );
-			}
+		return previous.then( whenCurrent( function() {
 			return OSApp.SiteMap.sendData( "/umd?pw=&off=" + start + "&tot=" + text.length, "d", text.slice( start, start + size ) );
-		} );
+		} ) );
 	}, $.Deferred().resolve().promise() );
 };
 
@@ -477,17 +484,9 @@ OSApp.SiteMap.fitImage = function( dataURL ) {
 // site was picked since, so the rest of the map doesn't go to the new controller.
 OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 	var stationCount = OSApp.SiteMap.getStationCount(),
-		controller = OSApp.currentSession.controller,
+		step = OSApp.SiteMap.forController(),
 		result = { pins: {}, drawings: OSApp.SiteMap.cleanDrawings( map.drawings, stationCount ),
-			format: OSApp.SiteMap.Constants.drawingFormat },
-		step = function( send ) {
-			return function( value ) {
-				if ( OSApp.currentSession.controller !== controller ) {
-					return $.Deferred().reject( { status: 0, statusText: "stale" } );
-				}
-				return send( value );
-			};
-		};
+			format: OSApp.SiteMap.Constants.drawingFormat };
 
 	$.each( map.pins || {}, function( sid, pos ) {
 		if ( Number( sid ) < stationCount ) {
@@ -536,35 +535,23 @@ OSApp.SiteMap.uploadMap = function( siteName, map, onProgress ) {
 // A cached map marked pending has changes that haven't reached the controller yet, so it is kept as it is
 // for the site map to send. Rejects with statusText "stale" if another site is picked before it finishes.
 OSApp.SiteMap.syncFromController = function( siteName, cached, keepLocal ) {
-	var controller = OSApp.currentSession.controller,
-		stale = function() {
-			return OSApp.currentSession.controller !== controller;
-		},
-		rejectStale = function() {
-			return $.Deferred().reject( { status: 0, statusText: "stale" } );
-		};
+	var whenCurrent = OSApp.SiteMap.forController();
 
 	if ( cached.pending ) {
 		return $.Deferred().resolve( cached ).promise();
 	}
-	return OSApp.SiteMap.fetchRemote().then( function( remote ) {
+	return OSApp.SiteMap.fetchRemote().then( whenCurrent( function( remote ) {
 		var map = { pins: OSApp.SiteMap.decodePins( remote.pins ), drawings: {}, rev: remote.rev,
 				format: OSApp.SiteMap.Constants.drawingFormat },
 			unchanged = cached.rev === remote.rev,
 
 			// Whether this device's copy is the controller's image; controllers report its fingerprint ("fp")
 			cachedIsCurrent = !!cached.image && ( remote.fp ? OSApp.SiteMap.getFingerprint( cached.image ) === remote.fp : unchanged ),
-			finish = function() {
-				if ( stale() ) {
-					return rejectStale();
-				}
+			finish = whenCurrent( function() {
 				OSApp.SiteMap.save( siteName, map, true );
 				return map;
-			},
-			loadDrawings = function() {
-				if ( stale() ) {
-					return rejectStale();
-				}
+			} ),
+			loadDrawings = whenCurrent( function() {
 				if ( !remote.drw ) {
 					return finish();
 				}
@@ -576,7 +563,7 @@ OSApp.SiteMap.syncFromController = function( siteName, cached, keepLocal ) {
 					map.drawings = drawings;
 					return finish();
 				} );
-			};
+			} );
 
 		if ( remote.rev === 0 && cached.rev === undefined && OSApp.SiteMap.hasData( cached ) ) {
 			if ( keepLocal ) {
@@ -616,7 +603,7 @@ OSApp.SiteMap.syncFromController = function( siteName, cached, keepLocal ) {
 			map.image = image;
 			return loadDrawings();
 		} );
-	} );
+	} ) );
 };
 
 // The current site's map for a config backup: { pins, drawings, image }, or null when there is none.
@@ -752,8 +739,11 @@ OSApp.SiteMap.Relay = {
 	sending: null
 };
 
-OSApp.SiteMap.Relay.request = function( dest, type ) {
-	return OSApp.Firmware.sendToOS( dest + "&cid=" + OSApp.SiteMap.Relay.clientId, type || "json" );
+// Sends a relay request to controller, the one the transfer is with; once another site is picked it isn't sent
+OSApp.SiteMap.Relay.request = function( dest, type, controller ) {
+	return OSApp.SiteMap.forController( controller )( function() {
+		return OSApp.Firmware.sendToOS( dest + "&cid=" + OSApp.SiteMap.Relay.clientId, type || "json" );
+	} )();
 };
 
 OSApp.SiteMap.Relay.wait = function( ms ) {
@@ -824,6 +814,7 @@ OSApp.SiteMap.Relay.send = function( dataURL, fingerprint, sending ) {
 	var Relay = OSApp.SiteMap.Relay,
 		Constants = OSApp.SiteMap.Constants,
 		bytes = OSApp.SiteMap.dataURLToBytes( dataURL ),
+		whenCurrent = OSApp.SiteMap.forController( sending.controller ),
 		done = $.Deferred(),
 		failures = 0,
 		retry = function() {
@@ -839,13 +830,13 @@ OSApp.SiteMap.Relay.send = function( dataURL, fingerprint, sending ) {
 				position;
 
 			for ( position = status.off + status.len; position < end; position += status.req ) {
-				request = request.then( function( start ) {
+				request = request.then( whenCurrent( function( start ) {
 					return OSApp.SiteMap.sendData( "/mxu?pw=&cid=" + Relay.clientId + "&off=" + start, "d",
 						OSApp.SiteMap.bytesToBase64( bytes.subarray( start, Math.min( end, start + status.req ) ) ) )
 						.then( function() {
 							failures = 0;
 						} );
-				}.bind( null, position ) );
+				}.bind( null, position ) ) );
 			}
 			return request;
 		},
@@ -858,10 +849,10 @@ OSApp.SiteMap.Relay.send = function( dataURL, fingerprint, sending ) {
 				return;
 			}
 			if ( sending.cancelled ) {
-				Relay.request( "/mxc?pw=" ).always( done.resolve );
+				Relay.request( "/mxc?pw=", null, sending.controller ).always( done.resolve );
 				return;
 			}
-			Relay.request( "/mxs?pw=&fp=" + fingerprint ).then( function( status ) {
+			Relay.request( "/mxs?pw=&fp=" + fingerprint, null, sending.controller ).then( function( status ) {
 				Relay.showSending( ( status.off + status.len ) / status.tot, sending );
 				if ( status.st === Relay.FILLING ) {
 					uploadWindow( status ).then( step, function( error ) {
@@ -943,7 +934,7 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 			return bytes;
 		},
 		leave = function( reason ) {
-			Relay.request( "/mxc?pw=" ).always( function() {
+			Relay.request( "/mxc?pw=", null, controller ).always( function() {
 				done.reject( { reason: reason } );
 			} );
 		},
@@ -959,7 +950,7 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 			}
 		},
 		download = function( status ) {
-			return Relay.request( "/mxd?pw=", "arraybuffer-response" ).then( function( response ) {
+			return Relay.request( "/mxd?pw=", "arraybuffer-response", controller ).then( function( response ) {
 				var part;
 
 				// Another site was picked while it downloaded; the next step stops
@@ -977,7 +968,7 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 					received += part.length;
 					onProgress( status, assemble() );
 				}
-				return Relay.request( "/mxa?pw=&off=" + ( status.off + part.length ) ).then( function() {
+				return Relay.request( "/mxa?pw=&off=" + ( status.off + part.length ), null, controller ).then( function() {
 					failures = 0;
 				} );
 			} );
@@ -996,10 +987,10 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 
 			// Every byte arrived but the reply to the last confirmation was lost; leave in case it never got there
 			if ( total && received >= total ) {
-				Relay.request( "/mxc?pw=" ).always( finish );
+				Relay.request( "/mxc?pw=", null, controller ).always( finish );
 				return;
 			}
-			Relay.request( "/mxr?pw=&fp=" + fingerprint ).then( function( status ) {
+			Relay.request( "/mxr?pw=&fp=" + fingerprint, null, controller ).then( function( status ) {
 				total = status.tot;
 				return status;
 			}, function( error ) {
@@ -1008,7 +999,7 @@ OSApp.SiteMap.Relay.receive = function( fingerprint, onProgress ) {
 				if ( status.pos === 0 && status.off > received ) {
 
 					// Batches went missing, as when an earlier request of this app was lost; start over
-					return Relay.request( "/mxc?pw=" ).then( start );
+					return Relay.request( "/mxc?pw=", null, controller ).then( start );
 				}
 				if ( status.pos === 0 && status.st === Relay.READY ) {
 					return download( status ).then( function() {
@@ -1486,6 +1477,19 @@ OSApp.SiteMap.createView = function() {
 		renderedView = null,
 		timeTimer = null;
 
+	// Wraps something to do once a request answers, so it does nothing (rejecting with statusText "stale") if
+	// another site was picked since. Taken when the request is made.
+	function forSite( callback ) {
+		var controller = loadedController;
+
+		return function() {
+			if ( loadedController !== controller || OSApp.currentSession.controller !== controller ) {
+				return $.Deferred().reject( { status: 0, statusText: "stale" } );
+			}
+			return callback.apply( this, arguments );
+		};
+	}
+
 	// Records changes to the pins and/or drawings. While editing they are kept until Done; otherwise they are
 	// saved right away, and on the controller they are batched so dragging sends one request
 	function persist( kinds ) {
@@ -1512,16 +1516,20 @@ OSApp.SiteMap.createView = function() {
 	// controller doesn't, so they are sent even if the app is closed first. report shows an error if it can't be
 	// saved; returns whether it was.
 	function saveCache( report ) {
-		var pending = uploading || Object.keys( dirty ).some( function( kind ) {
-			return dirty[ kind ];
-		} );
+
+		// While editing, the copy kept is the map as it was before the edit, which isn't saved until Done
+		var kept = editing && editSnapshot ? $.extend( copyMap( editSnapshot ), { rev: map.rev } ) : map,
+			changes = editing && editSnapshot ? editSnapshot.dirty : dirty,
+			pending = uploading || Object.keys( changes ).some( function( kind ) {
+				return changes[ kind ];
+			} );
 
 		if ( pending ) {
-			map.pending = true;
+			kept.pending = true;
 		} else {
-			delete map.pending;
+			delete kept.pending;
 		}
-		return OSApp.SiteMap.save( siteName, map, !report );
+		return OSApp.SiteMap.save( siteName, kept, !report );
 	}
 
 	// Makes dataURL the map image, to be sent with uploadChanges, and returns whether it could. Where the apps keep
@@ -1581,14 +1589,14 @@ OSApp.SiteMap.createView = function() {
 		uploading = changed;
 		if ( changed.all ) {
 			step( "all", withProgress( function() {
-				return OSApp.SiteMap.uploadMap( siteName, saved, showUploadProgress ).then( function( uploaded ) {
+				return OSApp.SiteMap.uploadMap( siteName, saved, showUploadProgress ).then( forSite( function( uploaded ) {
 					if ( editing ) {
 						return;
 					}
 					map.image = uploaded.image;
 					map.pins = uploaded.pins;
 					map.drawings = uploaded.drawings;
-				} );
+				} ) );
 			} ) );
 		} else {
 			if ( changed.image && saved.image ) {
@@ -1703,13 +1711,15 @@ OSApp.SiteMap.createView = function() {
 
 	// Records the controller revision matching what is on screen, so the cached image stays valid
 	function refreshRevision() {
-		return OSApp.SiteMap.fetchRemote().then( function( remote ) {
-			if ( editing && editSnapshot && editSnapshot.rev === map.rev ) {
-				editSnapshot.rev = remote.rev;
-			}
-			map.rev = remote.rev;
-			saveCache();
-		} );
+		return forSite( function() {
+			return OSApp.SiteMap.fetchRemote().then( forSite( function( remote ) {
+				if ( editing && editSnapshot && editSnapshot.rev === map.rev ) {
+					editSnapshot.rev = remote.rev;
+				}
+				map.rev = remote.rev;
+				saveCache();
+			} ) );
+		} )();
 	}
 
 	function showMap( loaded, loadedSource ) {
@@ -1812,7 +1822,7 @@ OSApp.SiteMap.createView = function() {
 				return uploadChanges().then( showSaved );
 			};
 
-		track( OSApp.SiteMap.fetchRemote().then( function( remote ) {
+		track( OSApp.SiteMap.fetchRemote().then( forSite( function( remote ) {
 			var decided = $.Deferred(),
 				answered = false;
 
@@ -1846,7 +1856,7 @@ OSApp.SiteMap.createView = function() {
 				}
 			} );
 			return decided.promise();
-		}, function( error ) {
+		} ), forSite( function( error ) {
 			if ( restarted() ) {
 				return;
 			}
@@ -1863,7 +1873,7 @@ OSApp.SiteMap.createView = function() {
 			OSApp.Errors.showError( OSApp.Language._( "Network Error" ) );
 			clearTimeout( pinSaveTimer );
 			pinSaveTimer = active ? setTimeout( retryChanges, Constants.retryDelay ) : null;
-		} ) );
+		} ) ) );
 	}
 
 	// Picks up changes saved from other devices
@@ -1874,11 +1884,11 @@ OSApp.SiteMap.createView = function() {
 			pinSaveTimer || pendingRequests ) {
 			return;
 		}
-		track( OSApp.SiteMap.syncFromController( siteName, map ).then( function( loaded ) {
+		track( OSApp.SiteMap.syncFromController( siteName, map ).then( forSite( function( loaded ) {
 			if ( !editing && !drag && !pinSaveTimer ) {
 				showMap( loaded, "controller" );
 			}
-		} ) );
+		} ) ) );
 	}
 
 	function showUploadProgress( fraction ) {
@@ -2743,17 +2753,17 @@ OSApp.SiteMap.createView = function() {
 			// Where the apps keep the image it doesn't have to fit the controller's flash
 			fitController = onController && !map.deviceImage;
 
-		OSApp.UIDom.getPicture( function( data ) {
+		OSApp.UIDom.getPicture( forSite( function( data ) {
 			var previous = map.image,
 				dataURL = "data:image/jpeg;base64," + data,
-				showImage = function() {
+				showImage = forSite( function() {
 					image.attr( "src", map.image || "" );
 
 					// Go straight to placing stations on a newly added map
 					setEditing( !previous && !!map.image );
 					updateHint();
 					fitMap();
-				};
+				} );
 
 			// A new image while editing is part of the edit: saved with Done, undone by Cancel
 			if ( editing ) {
@@ -2781,14 +2791,14 @@ OSApp.SiteMap.createView = function() {
 			// The upload learns the revision it produced before editing starts, so saving the edit doesn't mistake
 			// it for a change made on another device. One that doesn't go through stays here, sent again later, as
 			// it may have reached the controller; one refused, or meant for a site no longer picked, isn't shown.
-			uploadChanges().then( showImage, function( error ) {
+			uploadChanges().then( showImage, forSite( function( error ) {
 				if ( !error || ( typeof error.result !== "number" && error.statusText !== "stale" && error.status !== 401 ) ) {
 					image.attr( "src", map.image || "" );
 					updateHint();
 					fitMap();
 				}
-			} );
-		}, fitController ? Constants.controllerImageSize : Constants.maxImageSize,
+			} ) );
+		} ), fitController ? Constants.controllerImageSize : Constants.maxImageSize,
 		fitController ? Constants.controllerImageQuality : Constants.imageQuality );
 	}
 
@@ -2796,6 +2806,10 @@ OSApp.SiteMap.createView = function() {
 	function useImage( dataURL ) {
 		map.image = dataURL;
 		delete map.missingImage;
+		if ( editing && editSnapshot ) {
+			editSnapshot.image = dataURL;
+			delete editSnapshot.missingImage;
+		}
 		image.attr( "src", dataURL );
 		saveCache();
 		updateHint();
@@ -2808,7 +2822,7 @@ OSApp.SiteMap.createView = function() {
 	function loadImageFile() {
 		var missing = map.missingImage;
 
-		OSApp.UIDom.getPicture( function( data, original ) {
+		OSApp.UIDom.getPicture( forSite( function( data, original ) {
 			var resized = "data:image/jpeg;base64," + data;
 
 			if ( map.missingImage !== missing ) {
@@ -2819,13 +2833,13 @@ OSApp.SiteMap.createView = function() {
 				return;
 			}
 			OSApp.UIDom.areYouSure( OSApp.Language._( "This isn't the image this map was made with, so the valves and lines may not line up. Use it anyway?" ), "",
-				function() {
-					if ( changeImage( resized ) ) {
+				forSite( function() {
+					if ( map.missingImage === missing && changeImage( resized ) ) {
 						useImage( resized );
 						uploadChanges();
 					}
-				} );
-		}, Constants.maxImageSize, Constants.imageQuality );
+				} ) );
+		} ), Constants.maxImageSize, Constants.imageQuality );
 	}
 
 	// Gets the image from another device that has it, through the controller, filling it in as it arrives
@@ -2843,11 +2857,11 @@ OSApp.SiteMap.createView = function() {
 		receiving = OSApp.SiteMap.Relay.receive( missing.fp, showReceiving );
 		container.addClass( "site-map-receiving" );
 		showReceiving( null, null );
-		receiving.promise.then( function( dataURL ) {
+		receiving.promise.then( forSite( function( dataURL ) {
 			if ( map.missingImage === missing ) {
 				useImage( dataURL );
 			}
-		}, function( error ) {
+		} ), function( error ) {
 			if ( error.reason === "cancelled" ) {
 				return;
 			}

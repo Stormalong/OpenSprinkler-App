@@ -3834,6 +3834,137 @@ describe("Site Map Controller Storage", function () {
 		});
 	});
 
+	describe("after another site is picked mid-request", function () {
+		var restore, switchedAt;
+
+		// Picks another site once the controller answers a request for path
+		function switchAfter(path, state) {
+			remote.after = function (handled) {
+				if (handled === path && !restore) {
+					restore = switchController(state || { rev: 6, pins: { 1: [1000, 1000] }, image: jpeg("#123") }, "Other Controller");
+					switchedAt = requests.length;
+				}
+			};
+		}
+
+		// The app's own status refreshes (/ja) carry on regardless
+		function requestsSinceSwitch() {
+			return requests.slice(switchedAt).filter(function (request) {
+				return request.path !== "/ja";
+			});
+		}
+
+		afterEach(function () {
+			if (restore) restore();
+			restore = null;
+			switchedAt = undefined;
+			OSApp.SiteMap.setHomeView("cards");
+		});
+
+		it("should not download the image from the controller picked since", function () {
+			installController({ rev: 2, pins: { 0: [5000, 5000] }, image: jpeg() });
+			switchAfter("/jm");
+
+			return asNative(OSApp.SiteMap.syncFromController(siteName, {})).then(function () {
+				assert.fail("should stop");
+			}, function (error) {
+				assert.equal(error.statusText, "stale");
+				assert.lengthOf(requestsSinceSwitch(), 0);
+			});
+		});
+
+		it("should not ask about changes on another device for the site picked since", function () {
+			this.timeout(6000);
+			var confirm = sandbox.stub(OSApp.UIDom, "areYouSure");
+
+			installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+			return openHomeMap().then(function (page) {
+				remote.holdNext = "/jm";
+				return editAndSave(page).then(function () {
+					var held = remote;
+					restore = switchController({ rev: 6, pins: { 1: [1000, 1000] } }, "Other Controller");
+
+					// The held request is only recorded when it is answered
+					switchedAt = requests.length + 1;
+					held.release();
+					return wait(300);
+				});
+			}).then(function () {
+				assert.isFalse(confirm.called);
+				assert.lengthOf(requestsSinceSwitch(), 0);
+			});
+		});
+
+		it("should ignore a picture picked for the site picked since", function () {
+			this.timeout(6000);
+			var picked;
+
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				picked = callback;
+			});
+			installController({ rev: 0 });
+			OSApp.SiteMap.save(siteName, { pins: {}, drawings: {}, rev: 0 });
+			return openHomeMap().then(function (page) {
+				page.find(".site-map-add-image").trigger("click");
+				restore = switchController({ rev: 6 }, "Other Controller");
+				switchedAt = requests.length;
+				picked(jpeg("#d93").split(",")[1]);
+				return wait(300);
+			}).then(function () {
+				assert.lengthOf(requestsSinceSwitch(), 0);
+				return cachedMap("Other Controller");
+			}).then(function (other) {
+				assert.isUndefined(other.image);
+			});
+		});
+
+		it("should not send the image relay's next piece to the controller picked since", function () {
+			var image = jpeg(),
+				previous = OSApp.currentSession.controller,
+				retryDelay = OSApp.SiteMap.Constants.relayRetryDelay;
+
+			OSApp.SiteMap.Constants.relayRetryDelay = 5;
+			installController({ deviceImage: true, rev: 2, pins: {}, fp: OSApp.SiteMap.getFingerprint(image),
+				imageSize: atob(image.split(",")[1]).length, relay: { req: 100, win: 900 } });
+			remote.relay.receivers = ["0000beef"];
+			remote.relay.state = 1;
+			remote.after = function (path) {
+				if (path === "/mxu" && switchedAt === undefined) {
+					OSApp.currentSession.controller = $.extend(true, {}, previous);
+					switchedAt = requests.length;
+				}
+			};
+			return asNative(OSApp.SiteMap.Relay.send(image, remote.fp, { controller: previous, cancelled: false })).then(function () {
+				assert.lengthOf(requestsSinceSwitch(), 0);
+			}).finally(function () {
+				OSApp.SiteMap.Constants.relayRetryDelay = retryDelay;
+				OSApp.currentSession.controller = previous;
+				switchedAt = undefined;
+			});
+		});
+	});
+
+	it("should keep this device's copy as saved, not as being edited, while a save finishes", function () {
+		this.timeout(6000);
+
+		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
+		return openHomeMap().then(function (page) {
+			remote.holdNext = "/cmp";
+			return editAndSave(page).then(function () {
+				editAndMove(page, 0.8);
+				remote.release();
+				return wait(300);
+			}).then(function () {
+				return cachedMap(siteName);
+			}).then(function (cached) {
+				assert.isBelow(cached.pins[0].x, 0.3);
+				page.find(".site-map-cancel").trigger("click");
+			});
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
 	it("should send a save that didn't go through before the app closed", function () {
 		this.timeout(6000);
 		installController({ rev: 1, pins: { 0: [5000, 5000] }, image: jpeg() });
@@ -4594,7 +4725,11 @@ describe("Site Map Controller Storage", function () {
 					assert.fail("should not receive");
 				}, function (error) {
 					assert.equal(error.reason, "cancelled");
-					assert.lengthOf(requests.slice(switchedAt), 0);
+
+					// The app's own status refreshes (/ja) carry on regardless
+					assert.lengthOf(requests.slice(switchedAt).filter(function (request) {
+						return request.path !== "/ja";
+					}), 0);
 				}).finally(function () {
 					OSApp.currentSession.controller = previous;
 				});
@@ -4614,7 +4749,11 @@ describe("Site Map Controller Storage", function () {
 					assert.fail("should not receive");
 				}, function (error) {
 					assert.equal(error.reason, "cancelled");
-					assert.lengthOf(requests.slice(switchedAt), 0);
+
+					// The app's own status refreshes (/ja) carry on regardless
+					assert.lengthOf(requests.slice(switchedAt).filter(function (request) {
+						return request.path !== "/ja";
+					}), 0);
 				}).finally(function () {
 					OSApp.currentSession.controller = previous;
 				});
