@@ -1431,7 +1431,8 @@ OSApp.SiteMap.createView = function() {
 		// Counts edit sessions, so a save that waits on the controller can tell editing started again meanwhile
 		editSession = 0,
 
-		// The snapshot of an edit whose check for changes made elsewhere didn't get through, to check again
+		// The snapshot to check for changes made elsewhere against before changes waiting to be sent are sent: an
+		// edit's whose check didn't get through, or { rev, background } for a save that didn't go through
 		checkBeforeSave = null,
 
 		// The run being drawn: { sid, run, isNew, original }
@@ -1450,14 +1451,15 @@ OSApp.SiteMap.createView = function() {
 		// Whether the last upload failed and is waiting to be tried again
 		uploadFailed = false,
 
-		// The changes being uploaded, which still count as unsaved until the upload goes through
-		uploading = null,
+		// The saves queued or being sent, whose changes still count as unsaved until they go through
+		uploading = [],
 
 		// The save being sent; a later one waits for it (see uploadChanges)
 		activeUpload = null,
 
-		// A save refused while editing: the controller's map is shown again if the edit is cancelled
+		// A save refused while editing: the controller's map is shown again once the edit is cancelled or saved
 		reloadAfterEdit = false,
+		reloadAfterSave = false,
 
 		// The controller the map was loaded from; a different one means another site was picked
 		loadedController = null,
@@ -1527,7 +1529,9 @@ OSApp.SiteMap.createView = function() {
 		// While editing, the copy kept is the map as it was before the edit, which isn't saved until Done
 		var kept = editing && editSnapshot ? $.extend( copyMap( editSnapshot ), { rev: map.rev } ) : map,
 			changes = editing && editSnapshot ? editSnapshot.dirty : dirty,
-			pending = uploading || Object.keys( changes ).some( function( kind ) {
+			pending = uploading.some( function( job ) {
+				return job.controller === loadedController;
+			} ) || Object.keys( changes ).some( function( kind ) {
 				return changes[ kind ];
 			} );
 
@@ -1561,16 +1565,37 @@ OSApp.SiteMap.createView = function() {
 
 	// Sends the changes to the controller. A change that doesn't go through is sent again later, unless the
 	// controller refused it, the map was closed, or another site was picked. dirty.all replaces the whole map.
-	// Saves go one at a time: a later one starts once the one being sent has finished, so a step of the earlier one
-	// can't overwrite what the later one sent.
+	// What is sent is the map as it is now, not an edit started while it waits or is being sent.
 	function uploadChanges() {
+		var job = {
+			changed: dirty,
+			saved: copyMap( map ),
+			retrying: uploadFailed,
+			controller: loadedController,
+
+			// The edit session now; one started since is an edit made while this save was waiting or being sent
+			session: editSession
+		};
+
+		clearTimeout( pinSaveTimer );
+		pinSaveTimer = null;
+		dirty = noChanges();
+		uploading.push( job );
+		return queueSave( function() {
+			return startUpload( job );
+		} );
+	}
+
+	// Writes to the controller go one at a time: a later one starts once the one being sent has finished, so a step
+	// of the earlier one can't overwrite what the later one sent
+	function queueSave( send ) {
 		var previous = activeUpload || $.Deferred().resolve().promise(),
 			next = $.Deferred(),
 			current = next.promise();
 
 		activeUpload = current;
 		previous.always( function() {
-			startUpload().then( next.resolve, next.reject );
+			send().then( next.resolve, next.reject );
 		} );
 		return current.always( function() {
 			if ( activeUpload === current ) {
@@ -1579,16 +1604,15 @@ OSApp.SiteMap.createView = function() {
 		} );
 	}
 
-	function startUpload() {
-		var changed = dirty,
+	function startUpload( job ) {
+		var changed = job.changed,
+			session = job.session,
+			saved = job.saved,
+			retrying = job.retrying,
+			controller = job.controller,
 
-			// The edit session at the start; one started since is an edit made while this save was being sent
-			session = editSession,
-
-			// What is sent is the map as it is now, not an edit started while it is being sent
-			saved = copyMap( map ),
-			retrying = uploadFailed,
-			controller = loadedController,
+			// The revision this save starts from, which earlier saves have brought up to date
+			startRev = map.rev,
 			request = $.Deferred().resolve().promise(),
 			sending = null,
 
@@ -1609,12 +1633,13 @@ OSApp.SiteMap.createView = function() {
 						$.mobile.loading( "hide" );
 					} );
 				};
+			},
+			finished = function() {
+				uploading = uploading.filter( function( other ) {
+					return other !== job;
+				} );
 			};
 
-		clearTimeout( pinSaveTimer );
-		pinSaveTimer = null;
-		dirty = noChanges();
-		uploading = changed;
 		if ( changed.all ) {
 			step( "all", withProgress( function() {
 				return OSApp.SiteMap.uploadMap( siteName, saved, showUploadProgress ).then( forSite( function( uploaded ) {
@@ -1644,7 +1669,7 @@ OSApp.SiteMap.createView = function() {
 			}
 		}
 		step( "revision", function() {
-			uploading = null;
+			finished();
 			return refreshRevision();
 		} );
 		request = request.then( function() {
@@ -1652,11 +1677,19 @@ OSApp.SiteMap.createView = function() {
 			if ( retrying ) {
 				showSaved();
 			}
+
+			// A save refused during an edit left its changes on screen; now the edit is saved, show what the
+			// controller has, once the edit has ended (the save can finish before it does)
+			if ( reloadAfterSave ) {
+				reloadAfterSave = false;
+				setTimeout( forSite( reloadFromController ) );
+			}
 		}, function( error ) {
-			uploading = null;
+			finished();
 
 			// The changes stay marked pending on the site they were made for
-			if ( error && ( error.statusText === "stale" || error.statusText === "storage" || error.status === 401 ) ) {
+			if ( error && ( error.statusText === "stale" || error.statusText === "storage" || error.status === 401 ) ||
+				OSApp.currentSession.controller !== controller || loadedController !== controller ) {
 				return;
 			}
 
@@ -1677,8 +1710,10 @@ OSApp.SiteMap.createView = function() {
 				return $.Deferred().reject( error );
 			}
 
-			// Part of the change may already be on the controller, so send all of it again later. Until then the
-			// timer keeps checkForRemoteChanges from replacing the map with the partly saved one.
+			// Part of the change may already be on the controller, so send all of it again later, checking first
+			// that nobody saved from another device meanwhile. Until then the timer keeps checkForRemoteChanges
+			// from replacing the map with the partly saved one.
+			checkBeforeSave = checkBeforeSave || { rev: startRev, background: true };
 			$.each( changed, function( kind, value ) {
 				dirty[ kind ] = dirty[ kind ] || value;
 
@@ -1843,10 +1878,13 @@ OSApp.SiteMap.createView = function() {
 	}
 
 	// Before uploading an edit, makes sure nobody saved the map from another device since editing started;
-	// if they did, asks whether to overwrite their changes or load them and drop this edit.
-	// snapshot is the map as it was when editing started.
+	// if they did, asks whether to overwrite their changes or load them and drop this edit. Resolves with whether
+	// the changes were sent.
+	// snapshot is the map as it was when editing started, or { rev, background } for changes made outside an edit,
+	// which are saved without a message and, if the question is closed unanswered, left waiting to be sent.
 	function saveUnlessChangedElsewhere( snapshot ) {
 		var startRev = snapshot ? snapshot.rev : undefined,
+			background = snapshot && snapshot.background,
 			session = editSession,
 
 			// Editing started again before the controller answered: these changes are part of the new edit now,
@@ -1856,17 +1894,24 @@ OSApp.SiteMap.createView = function() {
 			},
 			save = function() {
 				if ( restarted() ) {
-					return $.Deferred().resolve().promise();
+					return $.Deferred().resolve( false ).promise();
 				}
-				return uploadChanges().then( showSaved );
+				return uploadChanges().then( function() {
+					if ( !background ) {
+						showSaved();
+					}
+					return true;
+				} );
 			};
 
-		track( OSApp.SiteMap.fetchRemote().then( forSite( function( remote ) {
+		// This check takes over from one waiting to be tried again
+		checkBeforeSave = null;
+		return track( OSApp.SiteMap.fetchRemote().then( forSite( function( remote ) {
 			var decided = $.Deferred(),
 				answered = false;
 
 			if ( restarted() ) {
-				return;
+				return false;
 			}
 			if ( startRev === undefined || remote.rev === startRev ) {
 				return save();
@@ -1877,27 +1922,32 @@ OSApp.SiteMap.createView = function() {
 
 					// Overwrite all of it, so the controller doesn't mix the other device's changes with these
 					dirty.all = true;
-					save().always( decided.resolve );
+					save().then( decided.resolve, decided.reject );
 				},
 				function() {
 					answered = true;
 					dirty = noChanges();
 					reloadFromController();
-					decided.resolve();
+					decided.resolve( false );
 				} );
 
-			// Closed without an answer: go back to the edit, so it can be saved again or cancelled
+			// Closed without an answer: go back to the edit, so it can be saved again or cancelled. Changes made
+			// outside an edit wait to be sent, with this check, next time
 			$( "#sure" ).one( "popupafterclose", function() {
 				if ( !answered ) {
-					setEditing( true );
-					editSnapshot = snapshot;
-					decided.resolve();
+					if ( background ) {
+						checkBeforeSave = snapshot;
+					} else {
+						setEditing( true );
+						editSnapshot = snapshot;
+					}
+					decided.resolve( false );
 				}
 			} );
 			return decided.promise();
 		} ), forSite( function( error ) {
 			if ( restarted() ) {
-				return;
+				return false;
 			}
 			if ( startRev === undefined ) {
 				return save();
@@ -1906,12 +1956,13 @@ OSApp.SiteMap.createView = function() {
 			// Without the check this could overwrite another device's changes, so the edit stays pending and the
 			// check is tried again, like a save that didn't go through
 			if ( error && error.status === 401 ) {
-				return;
+				return error;
 			}
 			checkBeforeSave = snapshot;
 			OSApp.Errors.showError( OSApp.Language._( "Network Error" ) );
 			clearTimeout( pinSaveTimer );
 			pinSaveTimer = active ? setTimeout( retryChanges, Constants.retryDelay ) : null;
+			return error;
 		} ) ) );
 	}
 
@@ -1945,6 +1996,8 @@ OSApp.SiteMap.createView = function() {
 	// Starts or ends editing. Ending saves the changes made since editing started, unless discard is set,
 	// which puts the map back the way it was.
 	function setEditing( value, discard ) {
+		var reload = false;
+
 		if ( drawing ) {
 			if ( discard ) {
 				cancelDrawing();
@@ -1957,17 +2010,23 @@ OSApp.SiteMap.createView = function() {
 			editSnapshot = copyMap( map );
 			editSnapshot.dirty = $.extend( {}, dirty );
 		} else if ( !value && editing ) {
+
+			// A save refused during the edit: Cancel shows what the controller has, and Done does once the edit is
+			// saved, as the refused changes are still on screen
+			if ( reloadAfterEdit ) {
+				reloadAfterEdit = false;
+				if ( !discard && source === "controller" && ( dirty.pins || dirty.drawings || dirty.image || dirty.all ) ) {
+					reloadAfterSave = true;
+				} else {
+					reload = true;
+				}
+			}
 			endEditSession( discard );
 		}
 		editing = value;
-
-		// A save refused during the edit: Done sends the edit over it, Cancel shows what the controller has
-		if ( !value && reloadAfterEdit ) {
-			reloadAfterEdit = false;
-			if ( discard ) {
-				dirty = noChanges();
-				reloadFromController();
-			}
+		if ( reload ) {
+			dirty = noChanges();
+			reloadFromController();
 		}
 		placingSid = null;
 		page.toggleClass( "site-map-editing", editing );
@@ -2533,6 +2592,9 @@ OSApp.SiteMap.createView = function() {
 		pinSaveTimer = null;
 		dirty = noChanges();
 		uploadFailed = false;
+		checkBeforeSave = null;
+		reloadAfterEdit = false;
+		reloadAfterSave = false;
 		mapLoaded = false;
 		showMap( { pins: {}, drawings: {} }, "local" );
 		loadSite();
@@ -2798,6 +2860,9 @@ OSApp.SiteMap.createView = function() {
 	function choosePicture() {
 		var onController = source === "controller",
 
+			// The revision when the picker opened, to check for changes made elsewhere while it was open
+			rev = map.rev,
+
 			// Where the apps keep the image it doesn't have to fit the controller's flash
 			fitController = onController && !map.deviceImage;
 
@@ -2839,7 +2904,14 @@ OSApp.SiteMap.createView = function() {
 			// The upload learns the revision it produced before editing starts, so saving the edit doesn't mistake
 			// it for a change made on another device. One that doesn't go through stays here, sent again later, as
 			// it may have reached the controller; one refused, or meant for a site no longer picked, isn't shown.
-			uploadChanges().then( showImage, forSite( function( error ) {
+			saveUnlessChangedElsewhere( { rev: rev, background: true } ).then( forSite( function( saved ) {
+				if ( saved ) {
+					return showImage();
+				}
+				image.attr( "src", map.image || "" );
+				updateHint();
+				fitMap();
+			} ), forSite( function( error ) {
 				if ( !error || ( typeof error.result !== "number" && error.statusText !== "stale" && error.status !== 401 ) ) {
 					image.attr( "src", map.image || "" );
 					updateHint();
@@ -2967,10 +3039,14 @@ OSApp.SiteMap.createView = function() {
 		var ended = bytes.length > 1 && bytes[ bytes.length - 2 ] === 0xFF && bytes[ bytes.length - 1 ] === 0xD9,
 			parts = ended ? [ bytes ] : [ bytes, new Uint8Array( [ 0xFF, 0xD9 ] ) ],
 			url = URL.createObjectURL( new Blob( parts, { type: "image/jpeg" } ) ),
-			probe = new Image();
+			probe = new Image(),
+			current = receiving,
+			controller = loadedController;
 
+		// Decoding finishes later, perhaps once the image has arrived or another site was picked
 		probe.onload = function() {
-			if ( !receiving || !probe.naturalWidth ) {
+			if ( !receiving || receiving !== current || loadedController !== controller ||
+				OSApp.currentSession.controller !== controller || !probe.naturalWidth ) {
 				URL.revokeObjectURL( url );
 				return;
 			}
@@ -2995,9 +3071,7 @@ OSApp.SiteMap.createView = function() {
 		}
 		URL.revokeObjectURL( previewURL );
 		previewURL = null;
-		if ( !map.image ) {
-			image.attr( "src", "" );
-		}
+		image.attr( "src", map.image || "" );
 	}
 
 	function shareImage() {
@@ -3032,7 +3106,13 @@ OSApp.SiteMap.createView = function() {
 				var controller = loadedController,
 					clearedSite = siteName;
 
-				track( OSApp.SiteMap.deleteRemote().then( function() {
+				// After any save being sent, whose later steps would otherwise put the map back
+				track( queueSave( function() {
+					if ( OSApp.currentSession.controller !== controller ) {
+						return $.Deferred().reject( { status: 0, statusText: "stale" } );
+					}
+					return OSApp.SiteMap.deleteRemote();
+				} ).then( function() {
 
 					// Another site was picked meanwhile: only the cleared site's copy goes
 					if ( OSApp.currentSession.controller !== controller ) {
