@@ -2206,6 +2206,13 @@ describe("Site Map Controller Storage", function () {
 			if (remote.reject && remote.reject[path]) {
 				return $.Deferred().reject({ result: remote.reject[path] }).promise();
 			}
+
+			// The same, for the next request to path only
+			if (remote.refuseNext && remote.refuseNext[path]) {
+				var result = remote.refuseNext[path];
+				delete remote.refuseNext[path];
+				return $.Deferred().reject({ result: result }).promise();
+			}
 			var data = options && options.body !== undefined ? options.body : params.get("d");
 
 			if (path === "/jm") {
@@ -4193,6 +4200,60 @@ describe("Site Map Controller Storage", function () {
 			});
 		});
 
+		it("should not send an edit saved after a clear was confirmed once the map is cleared", function () {
+			this.timeout(8000);
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				callback(jpeg("#d93").split(",")[1]);
+			});
+			return openHomeMap().then(function (page) {
+				// The save has a new image, which is slow to upload, before its valve
+				editAndMove(page, 0.2);
+				page.find(".site-map-image").trigger("click");
+				remote.holdNext = "/um";
+				page.find(".site-map-edit").trigger("click");
+				return wait(100).then(function () {
+					sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (text, subtext, yes) {
+						yes();
+					});
+
+					// Clear waits for it; meanwhile a valve is moved and saved
+					editAndMove(page, 0.8);
+					page.find(".site-map-clear").trigger("click");
+					page.find(".site-map-edit").trigger("click");
+					return wait(100);
+				}).then(function () {
+					remote.release();
+					return wait(500);
+				});
+			}).then(function () {
+				assert.deepEqual(remote.pins, {});
+				assert.isNull(remote.image);
+			});
+		});
+
+		it("should show the controller's map after a save queued meanwhile, when the earlier save was refused", function () {
+			this.timeout(8000);
+			return openHomeMap().then(function (page) {
+				remote.holdNext = "/cmp";
+				return editAndSave(page).then(function () {
+					// A later save is waiting when the earlier one is refused
+					editAndMove(page, 0.8);
+					page.find(".site-map-edit").trigger("click");
+					return wait(100);
+				}).then(function () {
+					remote.refuseNext = { "/cmp": 0x11 };
+					remote.release();
+					return wait(500);
+				});
+			}).then(function () {
+				assert.isAbove(remote.pins[0][0], 7000);
+				return cachedMap(siteName);
+			}).then(function (cached) {
+				assert.isAbove(cached.pins[0].x, 0.7);
+				assert.equal(cached.rev, remote.rev);
+			});
+		});
+
 		it("should send an earlier save that failed during an edit once the edit is cancelled", function () {
 			this.timeout(8000);
 			return openHomeMap().then(function (page) {
@@ -4227,6 +4288,31 @@ describe("Site Map Controller Storage", function () {
 		}).then(function (cached) {
 			assert.isUndefined(cached.pending);
 			assert.equal(cached.rev, remote.rev);
+		}).finally(function () {
+			OSApp.SiteMap.setHomeView("cards");
+		});
+	});
+
+	it("should check for changes from other devices before sending a save left from before the app closed", function () {
+		this.timeout(6000);
+		var confirm = sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (text, subtext, yes, no) {
+			// Keep the other device's changes
+			no();
+		});
+
+		// Another device saved after this device's save failed and the app closed
+		installController({ rev: 2, pins: { 0: [9000, 5000] }, image: jpeg() });
+		OSApp.SiteMap.save(siteName, { pins: { 0: { x: 0.2, y: 0.5 } }, drawings: {}, image: remote.image, rev: 1, pending: true });
+		return openHomeMap().then(function () {
+			return waitFor(function () {
+				return confirm.called;
+			});
+		}).then(function () {
+			return wait(300);
+		}).then(function () {
+			assert.lengthOf(requestsTo("/dm"), 0);
+			assert.lengthOf(requestsTo("/cmp"), 0);
+			assert.deepEqual(remote.pins, { 0: [9000, 5000] });
 		}).finally(function () {
 			OSApp.SiteMap.setHomeView("cards");
 		});
@@ -4638,6 +4724,39 @@ describe("Site Map Controller Storage", function () {
 					assert.isTrue(confirm.calledOnce);
 					assert.equal(remote.imageSize, imageSize(other));
 				});
+			}).finally(function () {
+				OSApp.SiteMap.setHomeView("cards");
+			});
+		});
+
+		it("should check for changes from other devices before sending a different image loaded meanwhile", function () {
+			var image = jpeg("#2a6"),
+				other = jpeg("#a26"),
+				questions = [];
+			installDeviceController(image);
+			sandbox.stub(OSApp.UIDom, "getPicture").callsFake(function (callback) {
+				// Another device saves while the picker is open
+				remote.rev++;
+				callback(other.split(",")[1], other);
+			});
+			sandbox.stub(OSApp.UIDom, "areYouSure").callsFake(function (question, detail, yes, no) {
+				// Use the different image, then keep the other device's changes
+				questions.push(question);
+				if (questions.length === 1) {
+					yes();
+				} else {
+					no();
+				}
+			});
+
+			return openHomeMap().then(function (page) {
+				page.find(".site-map-load-image").trigger("click");
+				return new Promise(function (resolve) {
+					setTimeout(resolve, 300);
+				});
+			}).then(function () {
+				assert.lengthOf(questions, 2);
+				assert.lengthOf(requestsTo("/cmi"), 0);
 			}).finally(function () {
 				OSApp.SiteMap.setHomeView("cards");
 			});

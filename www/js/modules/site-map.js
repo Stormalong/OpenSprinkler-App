@@ -1457,6 +1457,11 @@ OSApp.SiteMap.createView = function() {
 		// The save being sent; a later one waits for it (see uploadChanges)
 		activeUpload = null,
 
+		// Counts confirmed clears, so saves queued after one, which were made to the map being cleared, are dropped
+		// once it has gone through (cancelledSaves is the count they were queued with)
+		clears = 0,
+		cancelledSaves = null,
+
 		// A save refused while editing: the controller's map is shown again once the edit is cancelled or saved
 		reloadAfterEdit = false,
 		reloadAfterSave = false,
@@ -1572,6 +1577,7 @@ OSApp.SiteMap.createView = function() {
 			saved: copyMap( map ),
 			retrying: uploadFailed,
 			controller: loadedController,
+			clears: clears,
 
 			// The edit session now; one started since is an edit made while this save was waiting or being sent
 			session: editSession
@@ -1640,6 +1646,11 @@ OSApp.SiteMap.createView = function() {
 				} );
 			};
 
+		if ( job.clears === cancelledSaves ) {
+			finished();
+			return $.Deferred().reject( { status: 0, statusText: "stale" } ).promise();
+		}
+
 		if ( changed.all ) {
 			step( "all", withProgress( function() {
 				return OSApp.SiteMap.uploadMap( siteName, saved, showUploadProgress ).then( forSite( function( uploaded ) {
@@ -1700,9 +1711,14 @@ OSApp.SiteMap.createView = function() {
 				}
 				uploadFailed = false;
 
-				// Changes marked since this save started belong to an edit made meanwhile, which keeps them
+				// Changes marked since this save started belong to an edit made meanwhile, which keeps them, and a
+				// save queued meanwhile goes first, so a reload can't overtake it
 				if ( editing && editSession !== session ) {
 					reloadAfterEdit = true;
+				} else if ( uploading.some( function( other ) {
+					return other.controller === controller;
+				} ) ) {
+					reloadAfterSave = true;
 				} else {
 					dirty = noChanges();
 					reloadFromController();
@@ -1810,11 +1826,12 @@ OSApp.SiteMap.createView = function() {
 		renderPins();
 
 		// Changes that didn't reach the controller before, perhaps before the app was closed: send the whole map,
-		// so the controller ends up with what is shown here
+		// so the controller ends up with what is shown here, unless another device saved since
 		if ( source === "controller" && map.pending && !editing ) {
 			dirty.all = true;
+			checkBeforeSave = { rev: map.rev, background: true };
 			clearTimeout( pinSaveTimer );
-			pinSaveTimer = setTimeout( uploadChanges, Constants.pinSaveDelay );
+			pinSaveTimer = setTimeout( retryChanges, Constants.pinSaveDelay );
 		}
 	}
 
@@ -2956,7 +2973,10 @@ OSApp.SiteMap.createView = function() {
 	// Loads the image file shared from another device. The file has to be the very one the map was made with; any
 	// other image replaces the map image for every device, once confirmed.
 	function loadImageFile() {
-		var missing = map.missingImage;
+		var missing = map.missingImage,
+
+			// The revision when the picker opened, to check for changes made elsewhere before sending another image
+			rev = map.rev;
 
 		OSApp.UIDom.getPicture( forSite( function( data, original ) {
 			var resized = "data:image/jpeg;base64," + data;
@@ -2972,7 +2992,7 @@ OSApp.SiteMap.createView = function() {
 				forSite( function() {
 					if ( map.missingImage === missing && changeImage( resized ) ) {
 						useImage( resized );
-						uploadChanges();
+						saveUnlessChangedElsewhere( { rev: rev, background: true } );
 					}
 				} ) );
 		} ), Constants.maxImageSize, Constants.imageQuality );
@@ -3104,7 +3124,8 @@ OSApp.SiteMap.createView = function() {
 					return;
 				}
 				var controller = loadedController,
-					clearedSite = siteName;
+					clearedSite = siteName,
+					clear = ++clears;
 
 				// After any save being sent, whose later steps would otherwise put the map back
 				track( queueSave( function() {
@@ -3113,6 +3134,10 @@ OSApp.SiteMap.createView = function() {
 					}
 					return OSApp.SiteMap.deleteRemote();
 				} ).then( function() {
+
+					// Saves queued since Clear was confirmed were made to the map now cleared
+					cancelledSaves = clear;
+					clears++;
 
 					// Another site was picked meanwhile: only the cleared site's copy goes
 					if ( OSApp.currentSession.controller !== controller ) {
